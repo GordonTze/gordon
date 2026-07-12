@@ -1,0 +1,2186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>The Journey — An Interactive Topographic Journey</title>
+<meta name="description" content="Follow a dashed trail across 8 checkpoints on an interactive topographic timeline. Built with vanilla Three.js." />
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;0,800;0,900;1,400;1,500;1,600;1,700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.184.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.184.0/examples/jsm/"
+  }
+}
+</script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #1a1f2e; color: #e8f4f8; font-family: 'Inter', sans-serif; }
+  #app { position: relative; width: 100vw; height: 100vh; }
+  #canvas-wrap { position: absolute; inset: 0; }
+  canvas { display: block; }
+
+  /* ============ Header ============ */
+  .header {
+    position: absolute; top: 0; left: 0; right: 0; padding: 24px;
+    pointer-events: none; z-index: 10; transition: opacity .5s;
+  }
+  .header.hidden { opacity: 0; }
+  .header .max-w { max-width: 768px; }
+  .header .tag { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; pointer-events: auto; }
+  .header .dot { width: 8px; height: 8px; border-radius: 50%; background: #38c0e0; animation: pulse 1.6s ease-in-out infinite; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .3; } }
+  .header .tag span { font-size: 11px; text-transform: uppercase; letter-spacing: 4px; color: #38c0e0; font-family: 'JetBrains Mono', monospace; }
+  .header h1 { font-family: 'Playfair Display', serif; font-size: 48px; font-weight: 700; line-height: 1.05; letter-spacing: -.02em; margin-bottom: 8px; color: #ffffff; }
+  .header p { font-size: 14px; color: #a8c4d4; max-width: 560px; line-height: 1.55; }
+  .header p br + * { display: inline; }
+  @media (max-width: 768px) {
+    .header { padding: 16px; }
+    .header h1 { font-size: 28px; }
+    .header p { font-size: 12px; }
+  }
+
+  /* ============ Nav rail ============ */
+  .nav { position: absolute; bottom: 0; left: 0; right: 0; padding: 24px; pointer-events: none; z-index: 10; transition: opacity .5s; }
+  .nav.hidden { opacity: 0; }
+  .nav .rail-wrap { display: flex; justify-content: center; pointer-events: auto; }
+  .nav .rail { display: flex; gap: 6px; padding: 8px; border-radius: 999px; background: rgba(15,22,38,.8); backdrop-filter: blur(12px); border: 1px solid rgba(56,192,224,.3); box-shadow: 0 10px 30px rgba(0,0,0,.3); }
+  .nav .wp-btn { width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; border-radius: 999px; font-size: 14px; font-weight: 700; cursor: pointer; border: none; background: transparent; color: #a8c4d4; transition: all .2s; font-family: inherit; }
+  .nav .wp-btn:hover { background: rgba(56,192,224,.15); color: #38c0e0; }
+  .nav .wp-btn.visited { color: #38c0e0; }
+  .nav .wp-btn.active { color: #06070a; transform: scale(1.1); }
+  @media (max-width: 768px) {
+    .nav { padding: 12px; }
+    .nav .wp-btn { width: 32px; height: 32px; font-size: 12px; }
+    .nav .rail { gap: 4px; padding: 6px; }
+  }
+
+  /* ============ Help button ============ */
+  .help-btn {
+    position: absolute; bottom: 24px; right: 24px;
+    width: 44px; height: 44px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px; font-weight: 700; font-family: 'JetBrains Mono', monospace;
+    background: rgba(15,22,38,.8); backdrop-filter: blur(12px);
+    border: 1px solid rgba(56,192,224,.4); color: #38c0e0;
+    cursor: pointer; transition: all .2s; z-index: 40;
+    box-shadow: 0 8px 20px rgba(0,0,0,.3);
+  }
+  .help-btn:hover { background: rgba(56,192,224,.15); transform: scale(1.1); }
+  .help-btn.hidden { opacity: 0; pointer-events: none; }
+
+  /* ============ Help overlay ============ */
+  .help-overlay { position: absolute; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; padding: 16px; }
+  .help-overlay.hidden { display: none; }
+  .help-bg { position: absolute; inset: 0; background: rgba(42,37,32,.7); backdrop-filter: blur(8px); }
+  .help-card { position: relative; max-width: 460px; width: 100%; border-radius: 16px; box-shadow: 0 25px 50px rgba(0,0,0,.4); background: linear-gradient(180deg, #2a2520 0%, #1f1c18 100%); border: 1px solid rgba(56,192,224,.25); overflow: hidden; }
+  .help-card .accent-strip { height: 6px; width: 100%; background: #38c0e0; }
+  .help-card .close { position: absolute; top: 16px; right: 16px; width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: rgba(56,192,224,.13); color: #38c0e0; border: none; cursor: pointer; transition: transform .15s; }
+  .help-card .close:hover { transform: scale(1.1); }
+  .help-card .close svg { width: 14px; height: 14px; }
+  .help-card .body { padding: 32px; }
+  .help-card .label { font-size: 10px; font-family: 'JetBrains Mono', monospace; text-transform: uppercase; letter-spacing: 2px; color: #38c0e0; margin-bottom: 8px; }
+  .help-card h2 { font-family: 'Playfair Display', serif; font-size: 24px; font-weight: 700; color: #ffffff; margin-bottom: 20px; }
+  .help-card ul { list-style: none; display: flex; flex-direction: column; gap: 12px; }
+  .help-card li { display: flex; align-items: flex-start; gap: 12px; font-size: 13px; color: #a8c4d4; }
+  .help-card kbd { flex-shrink: 0; padding: 2px 8px; border-radius: 4px; background: #1a2540; border: 1px solid rgba(56,192,224,.3); color: #38c0e0; font-family: 'JetBrains Mono', monospace; font-size: 11px; min-width: 60px; text-align: center; }
+  .help-card footer { display: flex; justify-content: center; padding-top: 24px; margin-top: 24px; border-top: 1px solid #1a2540; }
+  .help-card footer button { padding: 10px 24px; border-radius: 8px; font-size: 13px; font-weight: 500; cursor: pointer; border: none; background: #38c0e0; color: #06070a; transition: transform .15s; font-family: inherit; }
+  .help-card footer button:hover { transform: scale(1.05); }
+
+  /* ============ Scene overlay ============ */
+  .scene-overlay { position: absolute; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; padding: 12px; }
+  .scene-overlay.hidden { display: none; }
+  .scene-bg { position: absolute; inset: 0; background: rgba(42,37,32,.8); backdrop-filter: blur(8px); }
+  .scene-card { position: relative; width: 1300px; height: 780px; border-radius: 16px; box-shadow: 0 25px 60px rgba(0,0,0,.5); background: linear-gradient(180deg, #2a2520 0%, #1f1c18 100%); overflow: hidden; border: 1px solid transparent; }
+  .scene-card .accent-strip { height: 6px; width: 100%; }
+  .scene-card .close { position: absolute; top: 16px; right: 16px; z-index: 30; width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; border: none; cursor: pointer; transition: transform .15s; }
+  .scene-card .close:hover { transform: scale(1.1); }
+  .scene-card .close svg { width: 16px; height: 16px; }
+  .scene-media { position: absolute; inset: 0; top: 6px; background: transparent; }
+  .scene-media canvas { display: block; width: 100% !important; height: 100% !important; }
+  .scene-top { position: absolute; top: 0; left: 0; right: 0; padding: 24px 24px 0; pointer-events: none; z-index: 20; text-align: center; }
+  .scene-top .paper { display: inline-block; padding: 20px 48px; border-radius: 10px; background: linear-gradient(135deg, #b8d0dc 0%, #c8b0c8 100%); backdrop-filter: blur(8px); box-shadow: 0 8px 32px rgba(0,0,0,0.4), 0 2px 8px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.5); border: 1px solid rgba(160,180,200,0.4); }
+  .scene-top .label { font-size: 13px; font-family: 'Playfair Display', serif; font-weight: 700; letter-spacing: 3px; text-transform: uppercase; margin-bottom: 8px; padding-left: 3px; color: #21355c !important; }
+  .scene-top h2 { font-family: 'Playfair Display', serif; font-size: 42px; font-weight: 900; line-height: 1; letter-spacing: -.02em; color: #21355c !important; margin-bottom: 8px; }
+  .scene-top .subtitle { font-family: 'Playfair Display', serif; font-size: 17px; font-style: italic; font-weight: 600; color: #2e4674 !important; }
+  .scene-bottom { position: absolute; bottom: 0; left: 0; right: 0; z-index: 20; pointer-events: auto; background: linear-gradient(180deg, rgba(31,28,24,0) 0%, rgba(31,28,24,0.15) 10%, rgba(31,28,24,0.35) 22%, rgba(31,28,24,0.55) 36%, rgba(31,28,24,0.72) 50%, rgba(31,28,24,0.85) 65%, rgba(31,28,24,0.93) 82%, rgba(29,25,21,0.97) 100%); min-height: 280px; display: flex; flex-direction: column; justify-content: flex-end; padding: 96px 80px 24px; }
+  .scene-bottom .description { text-align: center; color: #f0e8e0; font-size: 15px; line-height: 1.6; max-width: 780px; margin: 0 auto 24px; }
+  .scene-bottom .timeline { max-width: 600px; margin: 0 auto 20px; }
+  .scene-bottom .timeline-label { font-size: 10px; font-family: 'JetBrains Mono', monospace; text-transform: uppercase; letter-spacing: 2px; color: #38c0e0; margin-bottom: 10px; text-align: center; }
+  .scene-bottom .timeline-rail { display: flex; align-items: center; gap: 6px; }
+  .scene-bottom .timeline-rail button { flex: 1; background: transparent; border: none; cursor: pointer; padding: 0; }
+  .scene-bottom .timeline-rail .bar { height: 6px; border-radius: 3px; background: #2a3040; transition: background .2s; }
+  .scene-bottom .timeline-rail .num { font-size: 10px; font-family: 'JetBrains Mono', monospace; margin-top: 6px; text-align: center; color: #3a4a5a; transition: color .2s; }
+  .scene-bottom .back-wrap { display: flex; justify-content: center; }
+  .scene-bottom .back { padding: 10px 28px; border-radius: 8px; font-size: 14px; font-weight: 500; cursor: pointer; border: none; color: #06070a; transition: transform .15s; font-family: inherit; }
+  .scene-bottom .back:hover { transform: scale(1.05); }
+  /* Consistent sizing — no responsive breakpoints.
+     The card is 60vw x 60vh at all screen sizes (with min/max bounds)
+     so the UI looks the same proportionally at any window size. */
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="canvas-wrap"></div>
+
+  <header class="header" id="header">
+    <div class="max-w">
+      <div class="tag"><div class="dot"></div><span>An Interactive Journey · Topographic Timeline</span></div>
+      <h1>The Journey</h1>
+      <p>Follow the dashed trail across 8 checkpoints.<br>Use arrow keys or WASD to navigate.</p>
+    </div>
+  </header>
+
+  <nav class="nav" id="nav">
+    <div class="rail-wrap">
+      <div class="rail" id="rail"></div>
+    </div>
+  </nav>
+
+  <button class="help-btn" id="help-btn" aria-label="Show keyboard shortcuts" title="Keyboard shortcuts (?)">?</button>
+
+  <div class="help-overlay hidden" id="help-overlay">
+    <div class="help-bg" id="help-bg"></div>
+    <div class="help-card">
+      <div class="accent-strip"></div>
+      <button class="close" id="help-close" aria-label="Close">
+        <svg viewBox="0 0 14 14" fill="none"><path d="M1 1L13 13M13 1L1 13" stroke="currentColor" stroke-width="2" stroke-linecap="round" /></svg>
+      </button>
+      <div class="body">
+        <div class="label">Quick Reference</div>
+        <h2>Keyboard &amp; Mouse</h2>
+        <ul>
+          <li><kbd>Click</kbd><span>Click a numbered button or a flag on the map to fly to that checkpoint.</span></li>
+          <li><kbd>Drag</kbd><span>Drag the map to orbit around the terrain.</span></li>
+          <li><kbd>Scroll</kbd><span>Scroll to zoom in and out.</span></li>
+          <li><kbd>1–8</kbd><span>Jump straight to checkpoint N.</span></li>
+          <li><kbd>← → / A D</kbd><span>Navigate to the previous / next checkpoint.</span></li>
+          <li><kbd>Space / ↑ / W</kbd><span>Open the selected checkpoint's chapter panel.</span></li>
+          <li><kbd>↓ / S</kbd><span>Close the chapter panel.</span></li>
+          <li><kbd>?</kbd><span>Toggle this help window.</span></li>
+          <li><kbd>Esc</kbd><span>Close the chapter panel, or reset the camera to the intro view.</span></li>
+        </ul>
+        <footer><button id="help-ok">Got it</button></footer>
+      </div>
+    </div>
+  </div>
+
+  <div class="scene-overlay hidden" id="scene-overlay">
+    <div class="scene-bg" id="scene-bg"></div>
+    <article class="scene-card" id="scene-card">
+      <div class="accent-strip" id="scene-accent"></div>
+      <button class="close" id="scene-close" aria-label="Close">
+        <svg viewBox="0 0 14 14" fill="none"><path d="M1 1L13 13M13 1L1 13" stroke="currentColor" stroke-width="2" stroke-linecap="round" /></svg>
+      </button>
+      <div class="scene-media" id="scene-media">
+        <canvas id="sculpture-canvas"></canvas>
+      </div>
+      <div class="scene-top" id="scene-top">
+        <div class="paper">
+          <div class="label" id="scene-label" style="color: #21355c !important;">Checkpoint 1 / 8 · Curiosity</div>
+          <h2 id="scene-title" style="color: #21355c !important;">Genesis</h2>
+          <p class="subtitle" id="scene-subtitle" style="color: #2e4674 !important;">Everything starts small.</p>
+        </div>
+      </div>
+      <div class="scene-bottom" id="scene-bottom">
+        <p class="description" id="scene-description"></p>
+        <div class="timeline">
+          <div class="timeline-label">Journey Timeline</div>
+          <div class="timeline-rail" id="timeline-rail"></div>
+        </div>
+        <div class="back-wrap">
+          <button class="back" id="scene-back">Back to Map</button>
+        </div>
+      </div>
+    </article>
+  </div>
+</div>
+
+<script type="module">
+import * as THREE from 'three';
+import { Line2 } from 'three/addons/lines/Line2.js';
+import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
+import { LineGeometry } from 'three/addons/lines/LineGeometry.js';
+
+// ============================================================================
+// CONSTANTS — terrain
+// ============================================================================
+const GRID_SIZE = 200;
+const WORLD_SIZE = 72;
+const TERRAIN_HEIGHT = 10;
+const NUM_CONTOURS = 22;
+const CONTOUR_STEP_CELLS = 5;
+
+const PEAKS = [
+  { nx: 0.42, ny: 0.20, sigma: 0.14, amplitude: 0.55 },
+  { nx: 0.22, ny: 0.52, sigma: 0.14, amplitude: 0.50 },
+  { nx: 0.66, ny: 0.44, sigma: 0.13, amplitude: 0.60 },
+  { nx: 0.749, ny: 0.772, sigma: 0.12, amplitude: 1.0 },
+];
+
+const SADDLE = { nx: 0.44, ny: 0.48, sigma: 0.10, amplitude: -0.3 };
+
+const SMALL_HILLS = [
+  { nx: 0.12, ny: 0.18, sigma: 0.06, amplitude: 0.25 },
+  { nx: 0.88, ny: 0.22, sigma: 0.05, amplitude: 0.20 },
+  { nx: 0.55, ny: 0.78, sigma: 0.07, amplitude: 0.30 },
+  { nx: 0.30, ny: 0.85, sigma: 0.06, amplitude: 0.22 },
+  { nx: 0.75, ny: 0.10, sigma: 0.05, amplitude: 0.18 },
+  { nx: 0.08, ny: 0.72, sigma: 0.06, amplitude: 0.24 },
+  { nx: 0.50, ny: 0.50, sigma: 0.04, amplitude: 0.15 },
+];
+
+const CHECKPOINTS = [
+  { id: 0, nx: 0.12, ny: 0.18, title: "Genesis", theme: "Curiosity", subtitle: "Everything starts small.", description: "I found satisfaction in making repetitive task easier through automation. Whether I created small programs or experimented with macros, I enjoyed reducing complex problems into simple, logical parts. It was not just about completing the task, but also about understanding how it worked.", accent: "#8ecae6" },
+  { id: 1, nx: 0.42, ny: 0.20, title: "Discovery", theme: "Learning through leverage", subtitle: "Knowledge compounds.", description: "As I learned more about programming, I realized that the biggest breakthroughs did not come from writing more code. It came from studying how other people and companies solved their problems. Every open source repo, article, and project became a new perspective to learn from and build upon.", accent: "#a8dadc" },
+  { id: 2, nx: 0.75, ny: 0.10, title: "Challenge", theme: "Reframing", subtitle: "Progress isn't linear.", description: "Eventually, I hit a point where simply working harder did not pay off. More hours did not result in anything meaningful. I learned that real growth required me to challenge my assumptions, rethink how I approached problems, and accept that setbacks are a natural part of learning.", accent: "#b7e4c7" },
+  { id: 3, nx: 0.88, ny: 0.22, title: "Growth", theme: "Systems Thinking", subtitle: "Thinking bigger.", description: "At some point, I became comfortable working on larger projects that required careful planning to ensure development went smoothly. New languages and frameworks stopped feeling like obstacles and became just another set of tools. Instead of stressing over individual pieces of code, I began focusing on how the system fit together as a whole.", accent: "#c7e8a0" },
+  { id: 4, nx: 0.66, ny: 0.44, title: "Apex", theme: "Beyond Achievement", subtitle: "Achievement wasn't the destination.", description: "Reaching milestones felt rewarding, but they never felt like the end. Every problem I solved uncovered several more. I realized I am not motivated by checking off goals, but by discovering what lay beyond them.", accent: "#ffd6a5" },
+  { id: 5, nx: 0.50, ny: 0.50, title: "Transition", theme: "Reflection", subtitle: "The uncomfortable middle.", description: "Without a clear next goal, I felt uncertain on what came next. Instead of rushing into another project, I took time to wonder what kind of work genuinely interests me and what direction I actually want to grow in.", accent: "#ffb3c6" },
+  { id: 6, nx: 0.22, ny: 0.52, title: "Reinvention", theme: "Convergence", subtitle: "Returning to the beginning.", description: "Looking back, every stage shared the same foundation: curiosity. Even though the technologies changed, the projects grew larger, and the challenges got more complex, my motivation stayed the same. Growth is never about reaching the final destination but reaching a path to keep exploring.", accent: "#cdb4db" },
+  { id: 7, nx: 0.749, ny: 0.772, title: "Present", theme: "Endless Curiosity", subtitle: "Still climbing.", description: "Today, I am less interested in proving what I already know and more excited about discovering what I don't. Every project is another chance to experiment, question my assumptions, and push past my current limits. The journey itself has become the goal.", accent: "#e8d5f5" },
+];
+
+const BAND_COLORS = [
+  { r: 0x8e/255, g: 0xca/255, b: 0xe6/255 },
+  { r: 0xa8/255, g: 0xda/255, b: 0xdc/255 },
+  { r: 0xb7/255, g: 0xe4/255, b: 0xc7/255 },
+  { r: 0xc7/255, g: 0xe8/255, b: 0xa0/255 },
+  { r: 0xff/255, g: 0xd6/255, b: 0xa5/255 },
+  { r: 0xff/255, g: 0xb3/255, b: 0xc6/255 },
+  { r: 0xcd/255, g: 0xb4/255, b: 0xdb/255 },
+  { r: 0xe8/255, g: 0xd5/255, b: 0xf5/255 },
+];
+
+// ============================================================================
+// TERRAIN MATH
+// ============================================================================
+function gauss(nx, ny, cx, cy, sigma, amplitude) {
+  const dx = nx - cx, dy = ny - cy;
+  return amplitude * Math.exp(-(dx * dx + dy * dy) / (2 * sigma * sigma));
+}
+function hash2(x, y) {
+  const s = Math.sin(x * 127.1 + y * 311.7) * 43758.5453;
+  return s - Math.floor(s);
+}
+function noise2D(x, y) {
+  const ix = Math.floor(x), iy = Math.floor(y);
+  const fx = x - ix, fy = y - iy;
+  const a = hash2(ix, iy), b = hash2(ix + 1, iy);
+  const c = hash2(ix, iy + 1), d = hash2(ix + 1, iy + 1);
+  const ux = fx * fx * (3 - 2 * fx);
+  const uy = fy * fy * (3 - 2 * fy);
+  return a * (1 - ux) * (1 - uy) + b * ux * (1 - uy) + c * (1 - ux) * uy + d * ux * uy;
+}
+function fbm(x, y, octaves) {
+  let v = 0, a = 0.5;
+  for (let i = 0; i < octaves; i++) { v += a * noise2D(x, y); x *= 2; y *= 2; a *= 0.5; }
+  return v;
+}
+function sampleH(nx, ny) {
+  let h = 0;
+  const slope = (nx + ny) * 0.5 * 0.45;
+  h += slope;
+  for (const p of PEAKS) h += gauss(nx, ny, p.nx, p.ny, p.sigma, p.amplitude);
+  h += gauss(nx, ny, SADDLE.nx, SADDLE.ny, SADDLE.sigma, SADDLE.amplitude);
+  for (const hill of SMALL_HILLS) h += gauss(nx, ny, hill.nx, hill.ny, hill.sigma, hill.amplitude);
+  const edgeFade = Math.min(nx, 1 - nx) * 5.5;
+  const edgeFadeY = Math.min(ny, 1 - ny) * 5.5;
+  h *= Math.min(1, Math.min(edgeFade, edgeFadeY));
+  h += (fbm(nx * 8, ny * 8, 4) - 0.5) * 0.08;
+  return Math.max(0, h);
+}
+function sampleGrid(ix, iy) { return sampleH(ix / (GRID_SIZE - 1), iy / (GRID_SIZE - 1)); }
+function toWorld(nx, ny, h) { return [(nx - 0.5) * WORLD_SIZE, h * TERRAIN_HEIGHT, (ny - 0.5) * WORLD_SIZE]; }
+function elevationColor(h) {
+  const c = Math.pow(Math.max(0, Math.min(1, h)), 0.7);
+  const bandIdx = c * 7;
+  const i0 = Math.floor(bandIdx), i1 = Math.min(7, i0 + 1), t = bandIdx - i0;
+  const c0 = BAND_COLORS[i0], c1 = BAND_COLORS[i1];
+  const brightness = 0.82 + h * 0.28;
+  return [(c0.r + (c1.r - c0.r) * t) * brightness, (c0.g + (c1.g - c0.g) * t) * brightness, (c0.b + (c1.b - c0.b) * t) * brightness];
+}
+
+// ============================================================================
+// MAIN SCENE — renderer / camera / lights
+// ============================================================================
+const canvasWrap = document.getElementById('canvas-wrap');
+const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+renderer.setPixelRatio(Math.min(2, window.devicePixelRatio));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.0;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFShadowMap;
+canvasWrap.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color('#1a1f2e');
+scene.fog = new THREE.Fog('#2a3040', 40, 120);
+
+const camera = new THREE.PerspectiveCamera(40, window.innerWidth / window.innerHeight, 0.1, 200);
+camera.position.set(36, 30, 36);
+camera.lookAt(0, 3, 0);
+
+scene.add(new THREE.AmbientLight(0xa8b4c8, 0.4));
+const keyLight = new THREE.DirectionalLight(0xf0e8d8, 1.2);
+keyLight.position.set(12, 20, 10);
+scene.add(keyLight);
+const fillLight = new THREE.DirectionalLight(0x6a7a98, 0.3);
+fillLight.position.set(-10, 8, -8);
+scene.add(fillLight);
+
+// ============================================================================
+// TERRAIN MESH — vertex-color baked shading (matches reference index.html)
+// ============================================================================
+const LIGHT_AZ_T = 315 * Math.PI / 180, LIGHT_EL_T = 25 * Math.PI / 180;
+const LIGHT_XT = Math.cos(LIGHT_EL_T) * Math.cos(LIGHT_AZ_T);
+const LIGHT_YT = -Math.sin(LIGHT_EL_T);
+const LIGHT_ZT = Math.cos(LIGHT_EL_T) * Math.sin(LIGHT_AZ_T);
+const LIGHT_LEN_T = Math.sqrt(LIGHT_XT * LIGHT_XT + LIGHT_YT * LIGHT_YT + LIGHT_ZT * LIGHT_ZT);
+const LSX = -LIGHT_XT / LIGHT_LEN_T, LSY = -LIGHT_YT / LIGHT_LEN_T, LSZ = -LIGHT_ZT / LIGHT_LEN_T;
+
+function buildTerrainMesh() {
+  const geo = new THREE.PlaneGeometry(WORLD_SIZE, WORLD_SIZE, GRID_SIZE - 1, GRID_SIZE - 1);
+  const positions = geo.attributes.position;
+  const colors = new Float32Array(positions.count * 3);
+  const eps = 1 / (GRID_SIZE - 1);
+  const heightScale = TERRAIN_HEIGHT / WORLD_SIZE;
+  for (let i = 0; i < positions.count; i++) {
+    const ix = i % GRID_SIZE, iy = Math.floor(i / GRID_SIZE);
+    const h = sampleGrid(ix, iy);
+    positions.setZ(i, h * TERRAIN_HEIGHT);
+    const nx = ix / (GRID_SIZE - 1), ny = iy / (GRID_SIZE - 1);
+    const hL = sampleH(Math.max(0, nx - eps), ny);
+    const hR = sampleH(Math.min(1, nx + eps), ny);
+    const hD = sampleH(nx, Math.max(0, ny - eps));
+    const hU = sampleH(nx, Math.min(1, ny + eps));
+    const dhdx = ((hR - hL) / (2 * eps)) * heightScale;
+    const dhdz = ((hU - hD) / (2 * eps)) * heightScale;
+    const nLen = Math.sqrt(dhdx * dhdx + 1 + dhdz * dhdz);
+    const nxn = -dhdx / nLen, nyn = 1 / nLen, nzn = -dhdz / nLen;
+    let hillshade = nxn * LSX + nyn * LSY + nzn * LSZ;
+    hillshade = Math.max(0, hillshade);
+    const shade = 0.25 + 0.75 * hillshade;
+    const slope = Math.sqrt(dhdx * dhdx + dhdz * dhdz);
+    const slopeFactor = 1.0 - Math.min(0.25, slope * 0.12);
+    const texFreq = 25.0;
+    const texNoise = (hash2(nx * texFreq + 0.3, ny * texFreq - 0.7) - 0.5) * 2.0;
+    const texNoise2 = (hash2(nx * texFreq * 2.1 + 1.1, ny * texFreq * 2.1 - 0.4) - 0.5) * 2.0;
+    const slopeMod = 1.0 + Math.min(1.0, slope * 0.3);
+    const textureMod = (texNoise * 0.6 + texNoise2 * 0.4) * 0.04 * slopeMod;
+    let finalShade = shade * slopeFactor + textureMod;
+    if (h < 0.35) {
+      const neighborAvg = (hL + hR + hD + hU) / 4;
+      const concavity = Math.max(0, neighborAvg - h);
+      const depthFactor = 1.0 - h / 0.35;
+      const aoDarken = Math.min(0.38, concavity * 3.0 * depthFactor);
+      finalShade *= 1.0 - aoDarken;
+    }
+    const [r, g, b] = elevationColor(h);
+    colors[i * 3] = Math.max(0, r * finalShade);
+    colors[i * 3 + 1] = Math.max(0, g * finalShade);
+    colors[i * 3 + 2] = Math.max(0, b * finalShade);
+  }
+  positions.needsUpdate = true;
+  geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  geo.computeVertexNormals();
+  geo.rotateX(-Math.PI / 2);
+  const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85, metalness: 0.05 });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.receiveShadow = true;
+  return mesh;
+}
+scene.add(buildTerrainMesh());
+
+// ============================================================================
+// CONTOUR LINES — marching squares
+// ============================================================================
+function buildContours() {
+  const majorPositions = [];
+  const minorPositions = [];
+  const step = CONTOUR_STEP_CELLS;
+  for (let c = 0; c < NUM_CONTOURS; c++) {
+    const level = (c + 1) / (NUM_CONTOURS + 1);
+    const isMajor = (c + 1) % 5 === 0;
+    const segPoints = [];
+    for (let iy = 0; iy < GRID_SIZE - step; iy += step) {
+      for (let ix = 0; ix < GRID_SIZE - step; ix += step) {
+        const h00 = sampleGrid(ix, iy);
+        const h10 = sampleGrid(ix + step, iy);
+        const h01 = sampleGrid(ix, iy + step);
+        const h11 = sampleGrid(ix + step, iy + step);
+        const n00 = [ix / (GRID_SIZE - 1), iy / (GRID_SIZE - 1)];
+        const n10 = [(ix + step) / (GRID_SIZE - 1), iy / (GRID_SIZE - 1)];
+        const n01 = [ix / (GRID_SIZE - 1), (iy + step) / (GRID_SIZE - 1)];
+        const n11 = [(ix + step) / (GRID_SIZE - 1), (iy + step) / (GRID_SIZE - 1)];
+        const edges = [
+          [n00[0], n00[1], h00, n10[0], n10[1], h10],
+          [n10[0], n10[1], h10, n11[0], n11[1], h11],
+          [n11[0], n11[1], h11, n01[0], n01[1], h01],
+          [n01[0], n01[1], h01, n00[0], n00[1], h00],
+        ];
+        const crossings = [];
+        for (const [ax, ay, ah, bx, by, bh] of edges) {
+          const minH = Math.min(ah, bh);
+          const maxH = Math.max(ah, bh);
+          if (level >= minH && level <= maxH && maxH > minH) {
+            const t = (level - ah) / (bh - ah);
+            const cnx = ax + (bx - ax) * t;
+            const cny = ay + (by - ay) * t;
+            const [wx, wy, wz] = toWorld(cnx, cny, level);
+            crossings.push(new THREE.Vector3(wx, wy + 0.02, wz));
+          }
+        }
+        if (crossings.length === 2) {
+          segPoints.push(crossings[0], crossings[1]);
+        } else if (crossings.length === 4) {
+          segPoints.push(crossings[0], crossings[1], crossings[2], crossings[3]);
+        }
+      }
+    }
+    if (isMajor) majorPositions.push(...segPoints);
+    else minorPositions.push(...segPoints);
+  }
+  const group = new THREE.Group();
+  if (majorPositions.length > 0) {
+    const geo = new THREE.BufferGeometry().setFromPoints(majorPositions);
+    group.add(new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ color: 0x38c0e0, transparent: true, opacity: 0.35 })));
+  }
+  if (minorPositions.length > 0) {
+    const geo = new THREE.BufferGeometry().setFromPoints(minorPositions);
+    group.add(new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ color: 0x38c0e0, transparent: true, opacity: 0.15 })));
+  }
+  return group;
+}
+scene.add(buildContours());
+
+// ============================================================================
+// DASHED TRAIL — connecting checkpoints
+// ============================================================================
+function buildTrail() {
+  const pts = [];
+  for (let i = 0; i < CHECKPOINTS.length; i++) {
+    const cp = CHECKPOINTS[i];
+    const [x, y, z] = toWorld(cp.nx, cp.ny, sampleH(cp.nx, cp.ny));
+    pts.push(new THREE.Vector3(x, y + 0.15, z));
+    if (i < CHECKPOINTS.length - 1) {
+      const a = CHECKPOINTS[i];
+      const b = CHECKPOINTS[i + 1];
+      for (let s = 1; s < 24; s++) {
+        const t = s / 24;
+        const nx = a.nx + (b.nx - a.nx) * t;
+        const ny = a.ny + (b.ny - a.ny) * t;
+        const [wx, wy, wz] = toWorld(nx, ny, sampleH(nx, ny));
+        pts.push(new THREE.Vector3(wx, wy + 0.15, wz));
+      }
+    }
+  }
+  // Use Line2 for thick dashed line (LineDashedMaterial linewidth is ignored in WebGL)
+  const flatPoints = [];
+  pts.forEach(p => flatPoints.push(p.x, p.y, p.z));
+  const trailGeo2 = new LineGeometry();
+  trailGeo2.setPositions(flatPoints);
+  const trailMat2 = new LineMaterial({
+    color: 0x38c0e0,
+    linewidth: 4, // in pixels — 4x thicker than the old 1px line
+    dashed: true,
+    dashSize: 0.6,
+    gapSize: 0.35,
+    transparent: true,
+    opacity: 0.85,
+  });
+  trailMat2.resolution.set(window.innerWidth, window.innerHeight);
+  const trailLine2 = new Line2(trailGeo2, trailMat2);
+  trailLine2.computeLineDistances();
+  return trailLine2;
+}
+scene.add(buildTrail());
+
+// ============================================================================
+// CHECKPOINT FLAGS — pole + finial + flag + beacon + click sphere
+// ============================================================================
+const checkpointClickMeshes = [];
+const flagGroups = [];
+
+function buildCheckpointFlags() {
+  const root = new THREE.Group();
+  CHECKPOINTS.forEach((cp, i) => {
+    const h = sampleH(cp.nx, cp.ny);
+    const [x, y, z] = toWorld(cp.nx, cp.ny, h);
+    const g = new THREE.Group();
+    g.position.set(x, y, z);
+    g.userData.cpIndex = i;
+
+    // Pole — thin dark metallic
+    const pole = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.025, 0.035, 1.6, 8),
+      new THREE.MeshStandardMaterial({ color: 0x1a2535, roughness: 0.5, metalness: 0.6 })
+    );
+    pole.position.y = 0.7; pole.castShadow = true; g.add(pole);
+
+    // Finial — gold glowing sphere
+    const finial = new THREE.Mesh(
+      new THREE.SphereGeometry(0.05, 12, 12),
+      new THREE.MeshStandardMaterial({ color: 0xffd700, emissive: 0xffd700, emissiveIntensity: 0.5, roughness: 0.3, metalness: 0.8 })
+    );
+    finial.position.y = 1.55; finial.castShadow = true; g.add(finial);
+
+    // Flag — pink with emissive glow
+    const flag = new THREE.Mesh(
+      new THREE.BoxGeometry(0.7, 0.45, 0.015),
+      new THREE.MeshStandardMaterial({ color: 0xffb3d9, emissive: 0xffb3d9, emissiveIntensity: 0.5, roughness: 0.4, metalness: 0.1, side: THREE.DoubleSide })
+    );
+    flag.position.set(0.32, 1.3, 0); flag.castShadow = true; g.add(flag);
+
+    // Stripes — top and bottom
+    const stripeTop = new THREE.Mesh(
+      new THREE.BoxGeometry(0.7, 0.04, 0.01),
+      new THREE.MeshStandardMaterial({ color: 0xff8fbf, emissive: 0xff8fbf, emissiveIntensity: 0.4, side: THREE.DoubleSide })
+    );
+    stripeTop.position.set(0.32, 1.45, 0.01); g.add(stripeTop);
+
+    const stripeBot = new THREE.Mesh(
+      new THREE.BoxGeometry(0.7, 0.04, 0.01),
+      new THREE.MeshStandardMaterial({ color: 0xff8fbf, emissive: 0xff8fbf, emissiveIntensity: 0.4, side: THREE.DoubleSide })
+    );
+    stripeBot.position.set(0.32, 1.15, 0.01); g.add(stripeBot);
+
+    // Beacon — small glowing sphere at top
+    const beacon = new THREE.Mesh(
+      new THREE.SphereGeometry(0.06, 12, 12),
+      new THREE.MeshStandardMaterial({ color: 0xff8fbf, emissive: 0xff8fbf, emissiveIntensity: 1.5 })
+    );
+    beacon.position.y = 1.58; g.add(beacon);
+
+    // Number sprite — canvas texture
+    const canvas = document.createElement('canvas');
+    canvas.width = 128; canvas.height = 128;
+    const ctx = canvas.getContext('2d');
+    ctx.font = 'bold 80px Georgia,serif';
+    ctx.fillStyle = '#ffb3d9'; ctx.strokeStyle = '#06070a'; ctx.lineWidth = 6;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.strokeText(`${i + 1}`, 64, 64); ctx.fillText(`${i + 1}`, 64, 64);
+    const spriteTex = new THREE.CanvasTexture(canvas);
+    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: spriteTex, transparent: true, depthTest: false }));
+    sprite.position.y = 1.95; sprite.scale.set(0.65, 0.65, 0.65); g.add(sprite);
+
+    // Point light
+    const light = new THREE.PointLight(0xffb3d9, 0.6, 7);
+    light.position.y = 1.58; g.add(light);
+
+    // Click sphere (invisible, for raycasting)
+    const click = new THREE.Mesh(
+      new THREE.SphereGeometry(0.5, 8, 8),
+      new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false })
+    );
+    click.position.y = 1.0; click.userData.cpIndex = i; g.add(click);
+    checkpointClickMeshes.push(click);
+
+    g.userData.flag = flag;
+    g.userData.beacon = beacon;
+    g.userData.light = light;
+    root.add(g);
+    flagGroups.push(g);
+  });
+  return root;
+}
+scene.add(buildCheckpointFlags());
+
+function setActiveCheckpointVisual(idx) {
+  flagGroups.forEach((g, i) => {
+    const beacon = g.userData.beacon;
+    const light = g.userData.light;
+    const isActive = (i === idx);
+    beacon.material.emissiveIntensity = isActive ? 2.5 : 1.5;
+    if (light) light.intensity = isActive ? 0.9 : 0.6;
+  });
+}
+
+// ============================================================================
+// CAMERA SYSTEM — manual spherical orbit + fly-to
+// ============================================================================
+const ORBIT_TARGET = new THREE.Vector3(0, 3, 0);
+let orbitTheta, orbitPhi, orbitRadius;
+function setOrbitFromCamera(pos, target) {
+  const dx = pos.x - target.x, dy = pos.y - target.y, dz = pos.z - target.z;
+  orbitRadius = Math.sqrt(dx * dx + dy * dy + dz * dz);
+  orbitPhi = Math.acos(Math.max(-1, Math.min(1, dy / orbitRadius)));
+  orbitTheta = Math.atan2(dz, dx);
+}
+setOrbitFromCamera(new THREE.Vector3(36, 30, 36), ORBIT_TARGET);
+
+function applyOrbit() {
+  const p = Math.max(Math.PI / 8, Math.min(Math.PI / 2.1, orbitPhi));
+  camera.position.set(
+    ORBIT_TARGET.x + orbitRadius * Math.sin(p) * Math.cos(orbitTheta),
+    ORBIT_TARGET.y + orbitRadius * Math.cos(p),
+    ORBIT_TARGET.z + orbitRadius * Math.sin(p) * Math.sin(orbitTheta)
+  );
+  camera.lookAt(ORBIT_TARGET);
+}
+
+// Pointer / wheel input
+let isDragging = false;
+let dragLastX = 0, dragLastY = 0;
+let lastInteraction = Date.now();
+let autoRotateEnabled = true;
+let isFlying = false;
+let isSceneOpen = false;
+
+function markInteraction() {
+  lastInteraction = Date.now();
+  if (autoRotateEnabled) autoRotateEnabled = false;
+}
+
+renderer.domElement.addEventListener('pointerdown', (e) => {
+  if (isFlying || isSceneOpen) return;
+  // First detect a click vs drag: defer orbit start until movement threshold
+  isDragging = false;
+  dragLastX = e.clientX;
+  dragLastY = e.clientY;
+  const startX = e.clientX, startY = e.clientY;
+  const onMove = (ev) => {
+    const dx = ev.clientX - startX, dy = ev.clientY - startY;
+    if (!isDragging && (dx * dx + dy * dy) > 9) {
+      isDragging = true;
+      markInteraction();
+    }
+    if (isDragging) {
+      const ddx = ev.clientX - dragLastX, ddy = ev.clientY - dragLastY;
+      orbitTheta -= ddx * 0.005;
+      orbitPhi = Math.max(Math.PI / 8, Math.min(Math.PI / 2.1, orbitPhi - ddy * 0.005));
+      dragLastX = ev.clientX;
+      dragLastY = ev.clientY;
+    }
+  };
+  const onUp = (ev) => {
+    window.removeEventListener('pointermove', onMove);
+    window.removeEventListener('pointerup', onUp);
+    if (!isDragging) {
+      // Treat as click — try raycast checkpoint
+      const rect = renderer.domElement.getBoundingClientRect();
+      const px = ((ev.clientX - rect.left) / rect.width) * 2 - 1;
+      const py = -((ev.clientY - rect.top) / rect.height) * 2 + 1;
+      const ray = new THREE.Raycaster();
+      ray.setFromCamera(new THREE.Vector2(px, py), camera);
+      const hits = ray.intersectObjects(checkpointClickMeshes, false);
+      if (hits.length > 0) {
+        selectCheckpoint(hits[0].object.userData.cpIndex);
+      }
+    }
+    isDragging = false;
+  };
+  window.addEventListener('pointermove', onMove);
+  window.addEventListener('pointerup', onUp);
+});
+
+renderer.domElement.addEventListener('wheel', (e) => {
+  if (isFlying || isSceneOpen) return;
+  e.preventDefault();
+  markInteraction();
+  const factor = Math.exp(e.deltaY * 0.001);
+  orbitRadius = Math.max(10, Math.min(120, orbitRadius * factor));
+}, { passive: false });
+
+// Auto-rotate after 4s inactivity
+setInterval(() => {
+  if (isFlying || isSceneOpen) return;
+  const idle = Date.now() - lastInteraction > 4000;
+  if (idle && !autoRotateEnabled) autoRotateEnabled = true;
+}, 1000);
+
+// Fly-to camera with elevation-aware positioning
+let flyStart = null, flyEnd = null, flyProgress = 0;
+
+function flyToCheckpoint(idx) {
+  const cp = CHECKPOINTS[idx];
+  const [tx, ty, tz] = toWorld(cp.nx, cp.ny, sampleH(cp.nx, cp.ny));
+  const nextIdx = (idx + 1) % CHECKPOINTS.length;
+  const nextCp = CHECKPOINTS[nextIdx];
+  const [nx, ny, nz] = toWorld(nextCp.nx, nextCp.ny, sampleH(nextCp.nx, nextCp.ny));
+  const dirX = nx - tx, dirZ = nz - tz;
+  const dirLen = Math.sqrt(dirX * dirX + dirZ * dirZ) || 1;
+  // Per-checkpoint zoom distance — checkpoint 1 (index 0) is zoomed out 15%.
+  const zoomDist = idx === 0 ? 6.7 : 12;
+  const elevationDiff = ny - ty;
+  let cameraY;
+  if (elevationDiff > 0.5) {
+    if (elevationDiff > 4.0) cameraY = ty + 3.0;
+    else cameraY = ty + 3.0 + elevationDiff * 1.5;
+  } else {
+    cameraY = ty + 7.5;
+  }
+  // For checkpoint 1, angle the camera target toward checkpoint 2 so both
+  // are visible in frame while keeping checkpoint 1 centered-close.
+  const blend = idx === 0 ? 0.35 : 0.1;
+  let targetY;
+  if (elevationDiff > 0.5) targetY = ty + elevationDiff * 0.3 + 0.5;
+  else targetY = ty + 0.5;
+  flyStart = { pos: camera.position.clone(), target: ORBIT_TARGET.clone() };
+  flyEnd = {
+    pos: new THREE.Vector3(tx - (dirX / dirLen) * zoomDist, cameraY, tz - (dirZ / dirLen) * zoomDist),
+    target: new THREE.Vector3(tx + (nx - tx) * blend, targetY, tz + (nz - tz) * blend),
+  };
+  flyProgress = 0;
+  isFlying = true;
+}
+
+function flyToIntro() {
+  flyStart = { pos: camera.position.clone(), target: ORBIT_TARGET.clone() };
+  flyEnd = { pos: new THREE.Vector3(36, 30, 36), target: ORBIT_TARGET.clone() };
+  flyProgress = 0;
+  isFlying = true;
+}
+
+function completeFlight() {
+  isFlying = false;
+  // Don't set autoRotateEnabled=true here — the scene panel is about to open
+  // and auto-rotating the (hidden) main terrain would compete with the
+  // diorama rebuild for GPU time, causing a visible stutter.
+  // The idle timer will start auto-rotate after the scene closes.
+  lastInteraction = Date.now();
+  showScene();
+}
+
+// ============================================================================
+// SCENE PANEL LOGIC
+// ============================================================================
+let activeCheckpoint = null;
+const visited = new Set();
+
+const headerEl = document.getElementById('header');
+const navEl = document.getElementById('nav');
+const helpBtnEl = document.getElementById('help-btn');
+const helpOverlayEl = document.getElementById('help-overlay');
+const sceneOverlayEl = document.getElementById('scene-overlay');
+const sceneCardEl = document.getElementById('scene-card');
+const sceneBgEl = document.getElementById('scene-bg');
+const sceneCloseEl = document.getElementById('scene-close');
+const sceneBackEl = document.getElementById('scene-back');
+const sceneAccentEl = document.getElementById('scene-accent');
+const sceneLabelEl = document.getElementById('scene-label');
+const sceneTitleEl = document.getElementById('scene-title');
+const sceneSubtitleEl = document.getElementById('scene-subtitle');
+const sceneDescriptionEl = document.getElementById('scene-description');
+const timelineRailEl = document.getElementById('timeline-rail');
+
+function selectCheckpoint(idx) {
+  if (isFlying) return;
+  // If the scene is already open for this checkpoint, do nothing —
+  // avoids a close→open→rebuild flash of the diorama.
+  if (activeCheckpoint === idx && isSceneOpen) return;
+  closeScene(true);
+  visited.add(idx);
+  autoRotateEnabled = false;
+  lastInteraction = Date.now();
+  setActiveCheckpointVisual(idx);
+  updateRailStyles();
+  if (activeCheckpoint === idx) {
+    showScene();
+  } else {
+    activeCheckpoint = idx;
+    flyToCheckpoint(idx);
+  }
+}
+
+function showScene() {
+  if (activeCheckpoint === null) return;
+  const cp = CHECKPOINTS[activeCheckpoint];
+  const accent = cp.accent;
+  sceneAccentEl.style.background = accent;
+  sceneCardEl.style.borderColor = accent + '40';
+  sceneCloseEl.style.background = accent + '20';
+  sceneCloseEl.style.color = accent;
+  sceneLabelEl.textContent = `Checkpoint ${activeCheckpoint + 1} / ${CHECKPOINTS.length} · ${cp.theme}`;
+  sceneTitleEl.textContent = cp.title;
+  sceneSubtitleEl.textContent = cp.subtitle;
+  sceneDescriptionEl.textContent = cp.description;
+  sceneBackEl.style.background = accent;
+  buildTimeline(accent);
+  sceneOverlayEl.classList.remove('hidden');
+  isSceneOpen = true;
+  headerEl.classList.add('hidden');
+  navEl.classList.add('hidden');
+  helpBtnEl.classList.add('hidden');
+  // Resize sculpture canvas to fit container
+  resizeSculpture();
+  showSculpture(activeCheckpoint, accent);
+}
+
+function closeScene(silent) {
+  if (!isSceneOpen) return;
+  sceneOverlayEl.classList.add('hidden');
+  isSceneOpen = false;
+  headerEl.classList.remove('hidden');
+  navEl.classList.remove('hidden');
+  helpBtnEl.classList.remove('hidden');
+  stopSculpture();
+  // Update orbit target to the active checkpoint so the camera stays
+  // pointed at it instead of jumping back to the intro position.
+  if (activeCheckpoint !== null) {
+    const cp = CHECKPOINTS[activeCheckpoint];
+    const h = sampleH(cp.nx, cp.ny);
+    const [x, y, z] = toWorld(cp.nx, cp.ny, h);
+    ORBIT_TARGET.set(x, y + 0.5, z);
+    setOrbitFromCamera(camera.position, ORBIT_TARGET);
+  }
+  // Start auto-rotate immediately when the scene closes so the camera
+  // resumes orbiting without waiting for the idle timer.
+  autoRotateEnabled = true;
+}
+
+function goToIntro() {
+  activeCheckpoint = null;
+  setActiveCheckpointVisual(null);
+  updateRailStyles();
+  closeScene(true);
+  ORBIT_TARGET.set(0, 3, 0);
+  flyToIntro();
+}
+
+function buildTimeline(accent) {
+  timelineRailEl.innerHTML = '';
+  CHECKPOINTS.forEach((cp, i) => {
+    const btn = document.createElement('button');
+    btn.title = cp.title;
+    const bar = document.createElement('div');
+    bar.className = 'bar';
+    if (i === activeCheckpoint) bar.style.background = accent;
+    else if (visited.has(i)) bar.style.background = cp.accent + '80';
+    const num = document.createElement('div');
+    num.className = 'num';
+    num.textContent = (i + 1);
+    if (i === activeCheckpoint) num.style.color = accent;
+    else if (visited.has(i)) num.style.color = cp.accent;
+    btn.appendChild(bar);
+    btn.appendChild(num);
+    btn.addEventListener('click', () => {
+      if (i !== activeCheckpoint) selectCheckpoint(i);
+    });
+    timelineRailEl.appendChild(btn);
+  });
+}
+
+// Build nav rail buttons
+const railEl = document.getElementById('rail');
+CHECKPOINTS.forEach((cp, i) => {
+  const btn = document.createElement('button');
+  btn.className = 'wp-btn';
+  btn.textContent = (i + 1);
+  btn.title = `${i + 1}. ${cp.title} (${cp.theme})`;
+  btn.addEventListener('click', () => selectCheckpoint(i));
+  railEl.appendChild(btn);
+});
+
+function updateRailStyles() {
+  Array.from(railEl.children).forEach((btn, i) => {
+    btn.classList.remove('active', 'visited');
+    if (i === activeCheckpoint) btn.classList.add('active');
+    else if (visited.has(i)) btn.classList.add('visited');
+    btn.style.background = (i === activeCheckpoint) ? CHECKPOINTS[i].accent : '';
+    btn.style.color = (i === activeCheckpoint) ? '#06070a' : (visited.has(i) ? '' : '#3a4a5a');
+  });
+}
+updateRailStyles();
+
+function handlePrev() {
+  if (activeCheckpoint === null) { selectCheckpoint(0); return; }
+  const prev = Math.max(0, activeCheckpoint - 1);
+  if (prev !== activeCheckpoint) selectCheckpoint(prev);
+}
+function handleNext() {
+  if (activeCheckpoint === null) { selectCheckpoint(0); return; }
+  const next = Math.min(CHECKPOINTS.length - 1, activeCheckpoint + 1);
+  if (next !== activeCheckpoint) selectCheckpoint(next);
+}
+function handleOpenScene() {
+  if (isFlying) return;
+  if (activeCheckpoint === null) { selectCheckpoint(0); return; }
+  if (!isSceneOpen) showScene();
+}
+function handleCloseScene() {
+  if (isFlying) return;
+  if (isSceneOpen) closeScene(true);
+}
+
+// Help overlay
+let helpOpen = false;
+function setHelp(open) {
+  helpOpen = open;
+  if (open) helpOverlayEl.classList.remove('hidden');
+  else helpOverlayEl.classList.add('hidden');
+}
+helpBtnEl.addEventListener('click', () => setHelp(!helpOpen));
+document.getElementById('help-bg').addEventListener('click', () => setHelp(false));
+document.getElementById('help-close').addEventListener('click', () => setHelp(false));
+document.getElementById('help-ok').addEventListener('click', () => setHelp(false));
+
+// Scene overlay close handlers
+sceneBgEl.addEventListener('click', () => closeScene(true));
+sceneCloseEl.addEventListener('click', () => closeScene(true));
+sceneBackEl.addEventListener('click', () => closeScene(true));
+
+// Keyboard
+window.addEventListener('keydown', (e) => {
+  if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+  const k = e.key;
+  if (k === 'Escape') {
+    if (helpOpen) { setHelp(false); return; }
+    if (isSceneOpen) { closeScene(true); return; }
+    goToIntro();
+    return;
+  }
+  if (k === 'ArrowLeft' || k === 'a' || k === 'A') { handlePrev(); return; }
+  if (k === 'ArrowRight' || k === 'd' || k === 'D') { handleNext(); return; }
+  if (k === ' ' || k === 'Spacebar' || k === 'ArrowUp' || k === 'w' || k === 'W') {
+    e.preventDefault();
+    if (!helpOpen) handleOpenScene();
+    return;
+  }
+  if (k === 'ArrowDown' || k === 's' || k === 'S') {
+    e.preventDefault();
+    if (!helpOpen) handleCloseScene();
+    return;
+  }
+  if (k === '?' || (k === '/' && e.shiftKey)) {
+    if (!isSceneOpen && !isFlying) setHelp(!helpOpen);
+    return;
+  }
+  const num = parseInt(k, 10);
+  if (num >= 1 && num <= CHECKPOINTS.length) selectCheckpoint(num - 1);
+});
+
+// ============================================================================
+// SCULPTURE / DIORAMA VIEWER — separate Three.js scene
+// ============================================================================
+const SCULPTURE_CAMERA_CONFIG = [
+  { focus: [0, 0.5, 0.6], radius: 14.0, height: 6.0, groundColor: '#c8d8b8' },   // Genesis
+  { focus: [0, 0.4, 0], radius: 9.0, height: 5.0, groundColor: '#c0e0d0' },       // Discovery
+  { focus: [0, 0.35, 0], radius: 9.0, height: 5.0, groundColor: '#e0d0b8' },      // Challenge
+  { focus: [0.2, 0.4, 0.1], radius: 9.0, height: 5.0, groundColor: '#c8d0d8' },   // Growth
+  { focus: [0, 0.6, 0], radius: 9.0, height: 5.5, groundColor: '#e0d0e8' },       // Apex
+  { focus: [0, 0.35, 0], radius: 9.0, height: 4.5, groundColor: '#d0d8e0' },      // Transition
+  { focus: [0, 0.5, 0], radius: 9.0, height: 5.0, groundColor: '#d0e0c0' },       // Reinvention
+  { focus: [0.2, 0.35, -0.2], radius: 9.0, height: 5.0, groundColor: '#c8e0e0' }, // Present
+];
+
+const sculptureCanvas = document.getElementById('sculpture-canvas');
+const sculptureRenderer = new THREE.WebGLRenderer({ canvas: sculptureCanvas, antialias: true, alpha: false });
+sculptureRenderer.setPixelRatio(Math.min(2, window.devicePixelRatio));
+sculptureRenderer.toneMapping = THREE.ACESFilmicToneMapping;
+sculptureRenderer.toneMappingExposure = 1.1;
+sculptureRenderer.shadowMap.enabled = true;
+sculptureRenderer.shadowMap.type = THREE.PCFShadowMap;
+
+const sculptureScene = new THREE.Scene();
+sculptureScene.background = new THREE.Color('#7a92a8');
+sculptureScene.fog = new THREE.Fog('#8a7560', 15, 50);
+
+const sculptureCamera = new THREE.PerspectiveCamera(45, 1, 0.1, 1000);
+sculptureCamera.position.set(9, 5, 0);
+sculptureCamera.lookAt(0, 0, 0);
+
+// Studio cyclorama — curved backdrop with peach-to-blue gradient
+function buildCyclorama(groundColor) {
+  const geo = new THREE.CylinderGeometry(80, 80, 60, 64, 1, true, 0, Math.PI);
+  const pos = geo.attributes.position;
+  const colors = new Float32Array(pos.count * 3);
+  const bottomColor = new THREE.Color('#8a7560');
+  const topColor = new THREE.Color('#7a92a8');
+  const groundCol = new THREE.Color(groundColor);
+  for (let i = 0; i < pos.count; i++) {
+    const y = pos.getY(i);
+    const t = (y + 30) / 60;
+    if (t < 0.15) {
+      const blend = t / 0.15;
+      colors[i*3] = groundCol.r*(1-blend) + bottomColor.r*blend;
+      colors[i*3+1] = groundCol.g*(1-blend) + bottomColor.g*blend;
+      colors[i*3+2] = groundCol.b*(1-blend) + bottomColor.b*blend;
+    } else {
+      const t2 = (t - 0.15) / 0.85;
+      colors[i*3] = bottomColor.r + (topColor.r - bottomColor.r) * t2;
+      colors[i*3+1] = bottomColor.g + (topColor.g - bottomColor.g) * t2;
+      colors[i*3+2] = bottomColor.b + (topColor.b - bottomColor.b) * t2;
+    }
+  }
+  geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  const mat = new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.position.y = 10;
+  mesh.userData.cyclorama = true;
+  return mesh;
+}
+sculptureScene.add(buildCyclorama('#c8d8b8'));
+
+// Volumetric mist planes for atmospheric depth
+const mistGroup = new THREE.Group();
+const mistData = [[0,2,-30,50,0.12],[-20,3,-25,40,0.10],[20,1.5,-28,45,0.11],[0,0.5,-35,60,0.08]];
+mistData.forEach(function(m) {
+  const geo = new THREE.CircleGeometry(1, 32);
+  const mat = new THREE.MeshBasicMaterial({ color: 0xf0e8e0, transparent: true, opacity: m[4], depthWrite: false });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.position.set(m[0], m[1], m[2]);
+  mesh.rotation.x = -Math.PI / 2;
+  mesh.scale.setScalar(m[3]);
+  mistGroup.add(mesh);
+});
+sculptureScene.add(mistGroup);
+
+// Soft directional studio lighting — long diffused shadows
+sculptureScene.add(new THREE.AmbientLight(0xf5ede0, 0.5));
+const sHemi = new THREE.HemisphereLight(0xf8f0e8, 0xd5c5b0, 0.3);
+sculptureScene.add(sHemi);
+const sKey = new THREE.DirectionalLight(0xfff0d8, 1.6);
+sKey.position.set(8, 12, 6);
+sKey.castShadow = true;
+sKey.shadow.mapSize.set(2048, 2048);
+sKey.shadow.camera.near = 0.5;
+sKey.shadow.camera.far = 40;
+sKey.shadow.camera.left = -12;
+sKey.shadow.camera.right = 12;
+sKey.shadow.camera.top = 12;
+sKey.shadow.camera.bottom = -12;
+sKey.shadow.bias = -0.0005;
+sKey.shadow.normalBias = 0.02;
+sculptureScene.add(sKey);
+const sFill = new THREE.DirectionalLight(0xa0c0e0, 0.3);
+sFill.position.set(-6, 5, -4);
+sculptureScene.add(sFill);
+const accentLight = new THREE.PointLight(0xffffff, 0.3, 12);
+accentLight.position.set(0, 2, 0);
+sculptureScene.add(accentLight);
+
+// Extended ground plane (CircleGeometry radius 500)
+const groundGeo = new THREE.CircleGeometry(500, 64);
+const groundMat = new THREE.MeshStandardMaterial({ color: 0xc8d8b8, roughness: 0.95, emissive: 0xc8d8b8, emissiveIntensity: 0.03 });
+const groundMesh = new THREE.Mesh(groundGeo, groundMat);
+groundMesh.rotation.x = -Math.PI / 2;
+groundMesh.position.y = -0.15;
+groundMesh.receiveShadow = true;
+sculptureScene.add(groundMesh);
+
+let sculptureGroup = null;
+let sculptureAnimators = [];
+let sculptureActive = false;
+let sculptureTheta = 0;
+let sculptureFocus = new THREE.Vector3(0, 0.15, 0.6);
+let sculptureRadius = 3.0;
+let sculptureHeight = 1.0;
+const sculptureTimer = new THREE.Timer();
+
+function resizeSculpture() {
+  const rect = sculptureCanvas.parentElement.getBoundingClientRect();
+  const w = Math.max(2, rect.width);
+  const h = Math.max(2, rect.height);
+  sculptureRenderer.setSize(w, h, false);
+  sculptureCamera.aspect = w / h;
+  sculptureCamera.updateProjectionMatrix();
+}
+
+function showSculpture(id, accent) {
+  // Clear previous
+  if (sculptureGroup) {
+    sculptureScene.remove(sculptureGroup);
+    sculptureGroup.traverse((o) => {
+      if (o.geometry) o.geometry.dispose();
+      if (o.material) {
+        if (Array.isArray(o.material)) o.material.forEach((m) => m.dispose());
+        else o.material.dispose();
+      }
+    });
+    sculptureGroup = null;
+  }
+  sculptureAnimators = [];
+  // Update camera config
+  const cfg = SCULPTURE_CAMERA_CONFIG[id] || SCULPTURE_CAMERA_CONFIG[0];
+  sculptureFocus.set(cfg.focus[0], cfg.focus[1], cfg.focus[2]);
+  sculptureRadius = cfg.radius;
+  sculptureHeight = cfg.height;
+  // Update ground color + scene background + fog + cyclorama
+  groundMat.color.set(cfg.groundColor);
+  groundMat.emissive.set(cfg.groundColor);
+  sculptureScene.background = new THREE.Color('#7a92a8');
+  sculptureScene.fog = new THREE.Fog('#8a7560', 15, 50);
+  // Rebuild cyclorama with new ground color
+  sculptureScene.children.forEach(function(c) { if (c.userData.cyclorama) { sculptureScene.remove(c); c.geometry.dispose(); c.material.dispose(); } });
+  sculptureScene.add(buildCyclorama(cfg.groundColor));
+  // Update accent light
+  accentLight.color.set(accent);
+  // Build new diorama
+  sculptureGroup = buildDiorama(id, accent);
+  sculptureScene.add(sculptureGroup);
+  sculptureActive = true;
+  sculptureTimer.start();
+}
+
+function stopSculpture() {
+  sculptureActive = false;
+}
+
+function animateSculpture() {
+  requestAnimationFrame(animateSculpture);
+  if (!sculptureActive) return;
+  sculptureTimer.update();
+  const dt = sculptureTimer.getDelta();
+  const t = sculptureTimer.getElapsedTime();
+  sculptureTheta += dt * 0.22;
+  const y = sculptureHeight + Math.sin(sculptureTheta * 0.4) * 0.25;
+  sculptureCamera.position.set(
+    Math.cos(sculptureTheta) * sculptureRadius + sculptureFocus.x,
+    y,
+    Math.sin(sculptureTheta) * sculptureRadius + sculptureFocus.z
+  );
+  sculptureCamera.lookAt(sculptureFocus);
+  // Rotate mist planes slowly for atmospheric depth
+  mistGroup.rotation.y = t * 0.02;
+  for (let i = 0; i < sculptureAnimators.length; i++) sculptureAnimators[i].update(t, dt);
+  sculptureRenderer.render(sculptureScene, sculptureCamera);
+}
+
+// ============================================================================
+// DIORAMA BUILDING BLOCKS — vanilla Three.js
+// ============================================================================
+function clayMat(color, opts = {}) {
+  const m = new THREE.MeshStandardMaterial({
+    color: new THREE.Color(color),
+    roughness: opts.roughness !== undefined ? opts.roughness : 0.85,
+    metalness: opts.metalness !== undefined ? opts.metalness : 0.0,
+    emissive: new THREE.Color(opts.emissive || color),
+    emissiveIntensity: opts.emissiveIntensity !== undefined ? opts.emissiveIntensity : 0.05,
+    flatShading: !!opts.flatShading,
+    transparent: !!opts.transparent,
+    opacity: opts.opacity !== undefined ? opts.opacity : 1.0,
+    side: opts.side !== undefined ? opts.side : THREE.FrontSide,
+  });
+  return m;
+}
+
+function v3(arr) { return new THREE.Vector3(arr[0], arr[1], arr[2]); }
+
+function groundDisc(color, radius = 4.0) {
+  const geo = new THREE.CylinderGeometry(radius, radius, 0.2, 48);
+  const m = new THREE.Mesh(geo, clayMat(color, { roughness: 0.95 }));
+  m.position.set(0, -0.1, 0);
+  m.receiveShadow = true;
+  return m;
+}
+
+function hill(pos, scale = 1, color = '#5a7a4a') {
+  const geo = new THREE.SphereGeometry(1, 24, 16);
+  const m = new THREE.Mesh(geo, clayMat(color, { flatShading: true }));
+  m.position.set(pos[0], pos[1], pos[2]);
+  m.scale.set(scale, scale * 0.5, scale);
+  m.castShadow = true;
+  m.receiveShadow = true;
+  return m;
+}
+
+function tree(pos, scale = 1, trunkColor = '#5a3a22', canopyColor = '#2f4d2f') {
+  const g = new THREE.Group();
+  g.position.set(pos[0], pos[1], pos[2]);
+  g.scale.setScalar(scale);
+  const trunkGeo = new THREE.CylinderGeometry(0.12, 0.18, 1.0, 8);
+  const trunk = new THREE.Mesh(trunkGeo, clayMat(trunkColor));
+  trunk.position.set(0, 0.5, 0);
+  trunk.castShadow = true; trunk.receiveShadow = true;
+  g.add(trunk);
+  const c1Geo = new THREE.SphereGeometry(0.6, 16, 12);
+  const c1 = new THREE.Mesh(c1Geo, clayMat(canopyColor));
+  c1.position.set(0, 1.25, 0);
+  c1.castShadow = true; c1.receiveShadow = true;
+  g.add(c1);
+  const c2Geo = new THREE.SphereGeometry(0.45, 16, 12);
+  const c2 = new THREE.Mesh(c2Geo, clayMat(canopyColor));
+  c2.position.set(0, 1.85, 0);
+  c2.castShadow = true; c2.receiveShadow = true;
+  g.add(c2);
+  return g;
+}
+
+function bush(pos, scale = 1, color = '#3a5a2a') {
+  const g = new THREE.Group();
+  g.position.set(pos[0], pos[1], pos[2]);
+  g.scale.setScalar(scale);
+  const blobs = [
+    { pos: [0, 0.2, 0], r: 0.35 },
+    { pos: [0.3, 0.15, 0.1], r: 0.3 },
+    { pos: [-0.25, 0.15, -0.05], r: 0.28 },
+  ];
+  for (const b of blobs) {
+    const m = new THREE.Mesh(new THREE.SphereGeometry(b.r, 12, 8), clayMat(color));
+    m.position.set(b.pos[0], b.pos[1], b.pos[2]);
+    m.castShadow = true; m.receiveShadow = true;
+    g.add(m);
+  }
+  return g;
+}
+
+function rock(pos, scale = 1, color = '#7a7a7a', seed = 0) {
+  const geo = new THREE.IcosahedronGeometry(0.5, 0);
+  const m = new THREE.Mesh(geo, clayMat(color, { flatShading: true }));
+  m.position.set(pos[0], pos[1], pos[2]);
+  m.scale.set(scale, scale * 0.7, scale);
+  m.rotation.set(0, seed, seed * 0.7);
+  m.castShadow = true; m.receiveShadow = true;
+  return m;
+}
+
+function paper(pos, rot = [0, 0, 0], color = '#e8e4d0', scale = [0.6, 0.02, 0.8]) {
+  const geo = new THREE.BoxGeometry(scale[0], scale[1], scale[2]);
+  const m = new THREE.Mesh(geo, clayMat(color, { roughness: 0.9 }));
+  m.position.set(pos[0], pos[1], pos[2]);
+  m.rotation.set(rot[0], rot[1], rot[2]);
+  m.castShadow = true; m.receiveShadow = true;
+  return m;
+}
+
+function pole(pos, height = 2, radius = 0.05, color = '#5a3a22') {
+  const geo = new THREE.CylinderGeometry(radius, radius, height, 8);
+  const m = new THREE.Mesh(geo, clayMat(color));
+  m.position.set(pos[0], pos[1] + height / 2, pos[2]);
+  m.castShadow = true; m.receiveShadow = true;
+  return m;
+}
+
+function flag(polePos, poleHeight = 2, color = '#c83030', phase = 0) {
+  const g = new THREE.Group();
+  g.position.set(polePos[0], polePos[1], polePos[2]);
+  const pGeo = new THREE.CylinderGeometry(0.04, 0.05, poleHeight, 8);
+  const p = new THREE.Mesh(pGeo, clayMat('#5a3a22'));
+  p.position.set(0, poleHeight / 2, 0);
+  p.castShadow = true;
+  g.add(p);
+  const fGeo = new THREE.BoxGeometry(0.55, 0.32, 0.02);
+  const f = new THREE.Mesh(fGeo, clayMat(color, { emissiveIntensity: 0.1 }));
+  f.position.set(0.35, poleHeight * 0.85, 0);
+  f.castShadow = true;
+  g.add(f);
+  sculptureAnimators.push({
+    update(t) {
+      const tt = t + phase;
+      f.rotation.y = Math.sin(tt * 3) * 0.15;
+      f.scale.x = 1 + Math.sin(tt * 5) * 0.08;
+    },
+  });
+  return g;
+}
+
+function cloud(pos, scale = 1, speed = 0.2, color = '#f4f4f8') {
+  const g = new THREE.Group();
+  g.position.set(pos[0], pos[1], pos[2]);
+  g.scale.setScalar(scale);
+  const baseX = pos[0];
+  const puffs = [
+    { pos: [0, 0, 0], r: 0.6 },
+    { pos: [0.5, -0.1, 0.1], r: 0.5 },
+    { pos: [-0.5, -0.05, -0.1], r: 0.45 },
+    { pos: [0.1, 0.2, -0.2], r: 0.4 },
+  ];
+  for (const p of puffs) {
+    const m = new THREE.Mesh(new THREE.SphereGeometry(p.r, 12, 10), new THREE.MeshStandardMaterial({ color: new THREE.Color(color), transparent: true, opacity: 0.85, roughness: 1 }));
+    m.position.set(p.pos[0], p.pos[1], p.pos[2]);
+    g.add(m);
+  }
+  sculptureAnimators.push({
+    update(t) {
+      g.position.x = baseX + Math.sin(t * speed) * 0.5;
+    },
+  });
+  return g;
+}
+
+function bird(radius = 2, height = 6, speed = 0.5, phase = 0, color = '#2a2a3a') {
+  const g = new THREE.Group();
+  const wingL = new THREE.Group();
+  const wingR = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.ConeGeometry(0.1, 0.4, 8), clayMat(color));
+  body.rotation.x = Math.PI / 2;
+  body.castShadow = true;
+  g.add(body);
+  const wlBox = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.02, 0.15), clayMat(color));
+  wlBox.position.set(0.18, 0, 0);
+  wlBox.castShadow = true;
+  wingL.add(wlBox);
+  const wrBox = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.02, 0.15), clayMat(color));
+  wrBox.position.set(-0.18, 0, 0);
+  wrBox.castShadow = true;
+  wingR.add(wrBox);
+  g.add(wingL, wingR);
+  sculptureAnimators.push({
+    update(t) {
+      const tt = t * speed + phase;
+      g.position.x = Math.cos(tt) * radius;
+      g.position.z = Math.sin(tt) * radius;
+      g.position.y = height + Math.sin(tt * 2) * 0.3;
+      g.rotation.y = -tt + Math.PI / 2;
+      const flap = Math.sin(t * 8 + phase) * 0.5;
+      wingL.rotation.z = 0.3 + flap;
+      wingR.rotation.z = -0.3 - flap;
+    },
+  });
+  return g;
+}
+
+function gear(pos, radius = 0.4, teeth = 8, thickness = 0.08, color = '#8a7a5a', speed = 1, phase = 0) {
+  const g = new THREE.Group();
+  g.position.set(pos[0], pos[1], pos[2]);
+  const mat = clayMat(color, { metalness: 0.3, roughness: 0.6 });
+  // Disc
+  const disc = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius, thickness, 24), mat);
+  disc.rotation.x = Math.PI / 2;
+  disc.castShadow = true; disc.receiveShadow = true;
+  g.add(disc);
+  // Teeth
+  for (let i = 0; i < teeth; i++) {
+    const a = (i / teeth) * Math.PI * 2;
+    const t = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.15, thickness), mat);
+    t.position.set(Math.cos(a) * (radius + 0.05), Math.sin(a) * (radius + 0.05), 0);
+    t.rotation.z = a;
+    t.castShadow = true;
+    g.add(t);
+  }
+  // Torus ring
+  const torus = new THREE.Mesh(new THREE.TorusGeometry(radius * 0.6, 0.04, 8, 24), mat);
+  torus.rotation.x = Math.PI / 2;
+  torus.castShadow = true;
+  g.add(torus);
+  sculptureAnimators.push({
+    update(_, dt) { g.rotation.z += dt * speed; },
+  });
+  return g;
+}
+
+function glowingNode(pos, color = '#5acbff', scale = 1) {
+  const geo = new THREE.SphereGeometry(0.15, 16, 12);
+  const mat = new THREE.MeshStandardMaterial({ color: new THREE.Color(color), emissive: new THREE.Color(color), emissiveIntensity: 0.8, roughness: 0.3 });
+  const m = new THREE.Mesh(geo, mat);
+  m.position.set(pos[0], pos[1], pos[2]);
+  m.castShadow = true;
+  const base = scale;
+  sculptureAnimators.push({
+    update(t) {
+      const s = base * (1 + Math.sin(t * 2) * 0.15);
+      m.scale.setScalar(s);
+    },
+  });
+  return m;
+}
+
+function lineBetween(a, b, color = '#5acbff') {
+  const geo = new THREE.BufferGeometry().setFromPoints([v3(a), v3(b)]);
+  const mat = new THREE.LineBasicMaterial({ color: new THREE.Color(color) });
+  return new THREE.Line(geo, mat);
+}
+
+function bridge(pos, length = 2, color = '#7a5a3a') {
+  const g = new THREE.Group();
+  g.position.set(pos[0], pos[1], pos[2]);
+  const deck = new THREE.Mesh(new THREE.BoxGeometry(length, 0.1, 0.6), clayMat(color));
+  deck.position.set(0, 0.2, 0);
+  deck.castShadow = true; deck.receiveShadow = true;
+  g.add(deck);
+  const p1 = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.4, 6), clayMat(color));
+  p1.position.set(-length * 0.4, 0.1, 0);
+  p1.castShadow = true;
+  g.add(p1);
+  const p2 = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.4, 6), clayMat(color));
+  p2.position.set(length * 0.4, 0.1, 0);
+  p2.castShadow = true;
+  g.add(p2);
+  return g;
+}
+
+function building(pos, w = 0.8, h = 1.0, d = 0.8, color = '#c8b896', roofColor = '#7a3a2a') {
+  const g = new THREE.Group();
+  g.position.set(pos[0], pos[1], pos[2]);
+  const body = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), clayMat(color));
+  body.position.set(0, h / 2, 0);
+  body.castShadow = true; body.receiveShadow = true;
+  g.add(body);
+  const roof = new THREE.Mesh(new THREE.ConeGeometry(Math.max(w, d) * 0.8, 0.5, 4), clayMat(roofColor));
+  roof.position.set(0, h + 0.25, 0);
+  roof.rotation.y = Math.PI / 4;
+  roof.castShadow = true;
+  g.add(roof);
+  return g;
+}
+
+function crane(pos, color = '#a83a2a') {
+  const g = new THREE.Group();
+  g.position.set(pos[0], pos[1], pos[2]);
+  const mat = clayMat(color);
+  const mast = new THREE.Mesh(new THREE.BoxGeometry(0.15, 2.0, 0.15), mat);
+  mast.position.set(0, 1.0, 0);
+  mast.castShadow = true;
+  g.add(mast);
+  const cap = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.1, 0.2), mat);
+  cap.position.set(0, 2.0, 0);
+  cap.castShadow = true;
+  g.add(cap);
+  const jib = new THREE.Group();
+  jib.position.set(0, 1.95, 0);
+  const arm = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.08, 0.08), mat);
+  arm.position.set(0.6, 0, 0);
+  arm.castShadow = true;
+  jib.add(arm);
+  const hook = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.5, 0.1), clayMat('#3a3a3a'));
+  hook.position.set(1.2, -0.4, 0);
+  hook.castShadow = true;
+  jib.add(hook);
+  g.add(jib);
+  sculptureAnimators.push({
+    update(t) { jib.rotation.y = Math.sin(t * 0.5) * 0.5; },
+  });
+  return g;
+}
+
+function lantern(pos, color = '#ffcc66') {
+  const g = new THREE.Group();
+  g.position.set(pos[0], pos[1], pos[2]);
+  const p = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.06, 1.0, 6), clayMat('#3a3a3a'));
+  p.position.set(0, 0.5, 0);
+  p.castShadow = true;
+  g.add(p);
+  const orb = new THREE.Mesh(new THREE.SphereGeometry(0.15, 12, 10), new THREE.MeshStandardMaterial({ color: new THREE.Color(color), emissive: new THREE.Color(color), emissiveIntensity: 0.8 }));
+  orb.position.set(0, 1.1, 0);
+  orb.castShadow = true;
+  g.add(orb);
+  sculptureAnimators.push({
+    update(t) { orb.material.emissiveIntensity = 0.6 + Math.sin(t * 2) * 0.3; },
+  });
+  return g;
+}
+
+function signpost(pos, color = '#d4b896') {
+  const g = new THREE.Group();
+  g.position.set(pos[0], pos[1], pos[2]);
+  const p = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 1.2, 6), clayMat('#7a5a3a'));
+  p.position.set(0, 0.6, 0);
+  p.castShadow = true;
+  g.add(p);
+  const b1 = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.12, 0.04), clayMat(color));
+  b1.position.set(0.05, 0.95, 0);
+  b1.rotation.z = -0.1;
+  b1.castShadow = true;
+  g.add(b1);
+  const b2 = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.12, 0.04), clayMat(color));
+  b2.position.set(-0.05, 0.7, 0);
+  b2.rotation.z = 0.1;
+  b2.castShadow = true;
+  g.add(b2);
+  return g;
+}
+
+function mist(pos, scale = 1, color = '#d8d8e0') {
+  const g = new THREE.Group();
+  g.position.set(pos[0], pos[1], pos[2]);
+  g.scale.setScalar(scale);
+  const disc = new THREE.Mesh(new THREE.CircleGeometry(1.0, 24), new THREE.MeshStandardMaterial({ color: new THREE.Color(color), transparent: true, opacity: 0.3, roughness: 1 }));
+  disc.rotation.x = -Math.PI / 2;
+  g.add(disc);
+  sculptureAnimators.push({
+    update(_, dt) { g.rotation.y += dt * 0.3; },
+  });
+  return g;
+}
+
+function campfire(pos) {
+  const g = new THREE.Group();
+  g.position.set(pos[0], pos[1], pos[2]);
+  const log1 = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.6, 6), clayMat('#5a3a22'));
+  log1.position.set(0, 0.05, 0);
+  log1.rotation.z = Math.PI / 2;
+  log1.castShadow = true;
+  g.add(log1);
+  const log2 = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.6, 6), clayMat('#3a2a18'));
+  log2.position.set(0, 0.05, 0);
+  log2.rotation.x = Math.PI / 2;
+  log2.castShadow = true;
+  g.add(log2);
+  const flame = new THREE.Mesh(new THREE.ConeGeometry(0.15, 0.4, 8), new THREE.MeshStandardMaterial({ color: 0xff7a1a, emissive: 0xff5a0a, emissiveIntensity: 0.9 }));
+  flame.position.set(0, 0.3, 0);
+  flame.castShadow = true;
+  g.add(flame);
+  sculptureAnimators.push({
+    update(t) {
+      flame.scale.set(1 + Math.sin(t * 8) * 0.15, 1 + Math.sin(t * 10) * 0.2, 1 + Math.sin(t * 8) * 0.15);
+    },
+  });
+  return g;
+}
+
+function tent(pos, color = '#9a6a4a') {
+  const g = new THREE.Group();
+  g.position.set(pos[0], pos[1], pos[2]);
+  const m = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 1.0, 3), clayMat(color, { flatShading: true }));
+  m.position.set(0, 0.4, 0);
+  m.rotation.set(Math.PI / 2, 0, -Math.PI / 6);
+  m.castShadow = true; m.receiveShadow = true;
+  g.add(m);
+  return g;
+}
+
+function telescope(pos, color = '#3a3a4a') {
+  const g = new THREE.Group();
+  g.position.set(pos[0], pos[1], pos[2]);
+  const legs = [
+    { pos: [0.15, 0.2, 0], rot: [0, 0, -0.3] },
+    { pos: [-0.15, 0.2, 0], rot: [0, 0, 0.3] },
+    { pos: [0, 0.2, 0.18], rot: [0.3, 0, 0] },
+  ];
+  for (const leg of legs) {
+    const m = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.5, 6), clayMat('#5a3a22'));
+    m.position.set(leg.pos[0], leg.pos[1], leg.pos[2]);
+    m.rotation.set(leg.rot[0], leg.rot[1], leg.rot[2]);
+    m.castShadow = true;
+    g.add(m);
+  }
+  const tube = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.7, 8), clayMat(color, { metalness: 0.4, roughness: 0.5 }));
+  tube.position.set(0, 0.55, 0);
+  tube.castShadow = true;
+  g.add(tube);
+  sculptureAnimators.push({
+    update(t) { tube.rotation.z = Math.PI / 4 + Math.sin(t * 0.6) * 0.2; },
+  });
+  return g;
+}
+
+function glowingTree(pos, scale = 1, accent = '#5acbff') {
+  const g = new THREE.Group();
+  g.position.set(pos[0], pos[1], pos[2]);
+  g.scale.setScalar(scale);
+  const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.12, 0.8, 6), clayMat('#3a2a18'));
+  trunk.position.set(0, 0.4, 0);
+  trunk.castShadow = true;
+  g.add(trunk);
+  const canopy = new THREE.Mesh(new THREE.SphereGeometry(0.4, 16, 12), new THREE.MeshStandardMaterial({ color: new THREE.Color(accent), emissive: new THREE.Color(accent), emissiveIntensity: 0.7 }));
+  canopy.position.set(0, 1.0, 0);
+  canopy.castShadow = true;
+  g.add(canopy);
+  sculptureAnimators.push({
+    update(t) {
+      canopy.material.emissiveIntensity = 0.5 + Math.sin(t * 1.5) * 0.3;
+      canopy.scale.setScalar(1 + Math.sin(t * 1.5) * 0.05);
+    },
+  });
+  return g;
+}
+
+function flower(pos, color = '#ff6688') {
+  const g = new THREE.Group();
+  g.position.set(pos[0], pos[1], pos[2]);
+  const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.3, 4), clayMat('#3a5a2a'));
+  stem.position.set(0, 0.15, 0);
+  stem.castShadow = true;
+  g.add(stem);
+  const center = new THREE.Mesh(new THREE.SphereGeometry(0.04, 8, 6), clayMat('#ffcc44', { emissive: '#ffcc44', emissiveIntensity: 0.3 }));
+  center.position.set(0, 0.32, 0);
+  center.castShadow = true;
+  g.add(center);
+  for (let i = 0; i < 5; i++) {
+    const a = (i / 5) * Math.PI * 2;
+    const p = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 6), clayMat(color));
+    p.position.set(Math.cos(a) * 0.1, 0.35, Math.sin(a) * 0.1);
+    p.castShadow = true;
+    g.add(p);
+  }
+  return g;
+}
+
+function grassTuft(pos, scale = 1, color = '#4a6a3a') {
+  const g = new THREE.Group();
+  g.position.set(pos[0], pos[1], pos[2]);
+  g.scale.setScalar(scale);
+  for (let i = 0; i < 4; i++) {
+    const a = (i / 4) * Math.PI * 2;
+    const m = new THREE.Mesh(new THREE.ConeGeometry(0.015, 0.18, 4), clayMat(color));
+    m.position.set(Math.cos(a) * 0.06, 0.08, Math.sin(a) * 0.06);
+    m.rotation.set(Math.cos(a) * 0.3, 0, -Math.sin(a) * 0.3);
+    m.castShadow = true;
+    g.add(m);
+  }
+  return g;
+}
+
+// ============================================================================
+// BUILD DIORAMA — dispatch by id, returns THREE.Group
+// ============================================================================
+function buildDiorama(id, accent) {
+  switch (id) {
+    case 0: return buildGenesis(accent);
+    case 1: return buildDiscovery(accent);
+    case 2: return buildChallenge(accent);
+    case 3: return buildGrowth(accent);
+    case 4: return buildApex(accent);
+    case 5: return buildTransition(accent);
+    case 6: return buildReinvention(accent);
+    case 7: return buildPresent(accent);
+    default: return buildGenesis(accent);
+  }
+}
+
+function addBox(group, x, y, z, w, h, d, color, opts = {}) {
+  const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), clayMat(color, opts));
+  m.position.set(x, y, z);
+  m.castShadow = true;
+  if (opts.receive !== false) m.receiveShadow = true;
+  group.add(m);
+  return m;
+}
+function addCyl(group, x, y, z, rt, rTop, rBot, h, seg, color, opts = {}) {
+  const m = new THREE.Mesh(new THREE.CylinderGeometry(rTop, rBot, h, seg), clayMat(color, opts));
+  m.position.set(x, y, z);
+  m.castShadow = true; m.receiveShadow = true;
+  group.add(m);
+  return m;
+}
+
+// ----- Genesis: workshop of beginnings -----
+function buildGenesis(accent) {
+  const g = new THREE.Group();
+  g.add(groundDisc('#3d5a3d', 20));
+
+  g.add(hill([-6, 0, 4], 2.5));
+  g.add(hill([7, 0, -3], 2.0));
+
+  // Workshop
+  const ws = new THREE.Group();
+  addBox(ws, 0, 0.75, 0, 2.5, 1.5, 1.8, '#a89070');
+  const roof = new THREE.Mesh(new THREE.ConeGeometry(1.9, 1.0, 4), clayMat('#7a3a2a'));
+  roof.position.set(0, 1.75, 0); roof.rotation.y = Math.PI / 4; roof.castShadow = true;
+  ws.add(roof);
+  addBox(ws, 0, 0.5, 0.91, 0.5, 1.0, 0.05, '#5a3a22');
+  // Windows (front x2, back x1, sides x2)
+  addBox(ws, 0.75, 0.9, 0.91, 0.4, 0.4, 0.05, accent, { emissive: accent, emissiveIntensity: 0.25 });
+  addBox(ws, -0.75, 0.9, 0.91, 0.4, 0.4, 0.05, accent, { emissive: accent, emissiveIntensity: 0.25 });
+  addBox(ws, 0, 0.9, -0.91, 0.4, 0.4, 0.05, accent, { emissive: accent, emissiveIntensity: 0.25 });
+  const wL = addBox(ws, 1.26, 0.9, 0, 0.4, 0.4, 0.05, accent, { emissive: accent, emissiveIntensity: 0.25 });
+  wL.rotation.y = Math.PI / 2;
+  const wR = addBox(ws, -1.26, 0.9, 0, 0.4, 0.4, 0.05, accent, { emissive: accent, emissiveIntensity: 0.25 });
+  wR.rotation.y = Math.PI / 2;
+  // Chimney + smoke
+  addBox(ws, 0.7, 2.1, 0, 0.25, 0.7, 0.25, '#5a3a30');
+  ws.add(cloud([0.7, 2.8, 0], 0.35, 0.2, '#cccccc'));
+  // Weathervane
+  addCyl(ws, 0, 2.4, 0, null, 0.02, 0.02, 0.4, 6, '#3a3a3a', { metalness: 0.5, roughness: 0.4 });
+  addBox(ws, 0.18, 2.5, 0, 0.3, 0.05, 0.02, '#3a3a3a', { metalness: 0.5, roughness: 0.4 });
+  // Lean-to with firewood
+  const lean = new THREE.Group();
+  lean.position.set(-1.8, 0, 0.5);
+  const slant = addBox(lean, 0, 0.6, 0, 0.05, 1.2, 1.2, '#5a3a22');
+  slant.rotation.z = 0.3;
+  addBox(lean, 0, 1.1, 0, 0.9, 0.05, 1.2, '#5a3a22');
+  for (let i = 0; i < 4; i++) {
+    const log = addCyl(lean, -0.15 - (i % 2) * 0.12, 0.08 + Math.floor(i / 2) * 0.14, -0.2 + (i % 2) * 0.3, null, 0.06, 0.06, 0.45, 6, '#5a3a22');
+    log.rotation.z = Math.PI / 2;
+  }
+  ws.add(lean);
+  g.add(ws);
+
+  // Sawhorse with planks
+  const sh = new THREE.Group();
+  sh.position.set(3.5, 0, 0);
+  const shA = addBox(sh, -0.3, 0.25, 0, 0.05, 0.5, 0.05, '#5a3a22'); shA.rotation.z = 0.25;
+  const shB = addBox(sh, -0.3, 0.25, 0, 0.05, 0.5, 0.05, '#5a3a22'); shB.rotation.z = -0.25;
+  const shC = addBox(sh, 0.3, 0.25, 0, 0.05, 0.5, 0.05, '#5a3a22'); shC.rotation.z = 0.25;
+  const shD = addBox(sh, 0.3, 0.25, 0, 0.05, 0.5, 0.05, '#5a3a22'); shD.rotation.z = -0.25;
+  addBox(sh, 0, 0.5, 0, 1.0, 0.05, 0.05, '#5a3a22');
+  addBox(sh, 0, 0.6, 0, 0.9, 0.04, 0.2, '#9a7a52');
+  addBox(sh, 0, 0.68, 0, 0.8, 0.04, 0.18, '#9a7a52');
+  g.add(sh);
+
+  // Toolbox
+  const tb = new THREE.Group();
+  tb.position.set(-3.0, 0, -1.0);
+  addBox(tb, 0, 0.15, 0, 0.6, 0.3, 0.3, '#7a4a2a');
+  const handle = new THREE.Mesh(new THREE.TorusGeometry(0.18, 0.02, 6, 12, Math.PI), clayMat('#5a3a22'));
+  handle.position.set(0, 0.36, 0);
+  handle.castShadow = true;
+  tb.add(handle);
+  g.add(tb);
+
+  // Anvil
+  const an = new THREE.Group();
+  an.position.set(-3.5, 0, 0.5);
+  addBox(an, 0, 0.15, 0, 0.4, 0.3, 0.4, '#3a3a3a', { metalness: 0.6, roughness: 0.4 });
+  addBox(an, 0, 0.4, 0, 0.6, 0.12, 0.2, '#3a3a3a', { metalness: 0.6, roughness: 0.4 });
+  g.add(an);
+
+  // Workshop grass tufts (6)
+  const workshopGrass = [[2.5, 0, 1.5], [-2.5, 0, 1.5], [2.5, 0, -1.5], [-2.5, 0, -1.5], [3.5, 0, 0.5], [-3.5, 0, -0.5]];
+  for (const p of workshopGrass) g.add(grassTuft(p));
+
+  // Wildflowers near workshop (3)
+  const nearWild = [[2.0, 0, 2.0, '#ff6688'], [-2.2, 0, -1.8, '#ffcc44'], [3.0, 0, -1.0, '#a866ff']];
+  for (const p of nearWild) g.add(flower([p[0], p[1], p[2]], p[3]));
+
+  // Flat blueprints (3)
+  const flatBp = [[-3.5, 0.02, 2.5, 0.3], [3.8, 0.02, -1.0, -0.6], [-2.0, 0.02, -2.8, 0.9]];
+  for (const p of flatBp) g.add(paper([p[0], p[1], p[2]], [0, p[3], 0], '#d8e4e8', [0.5, 0.015, 0.7]));
+  // Rolled blueprint
+  const rb = addCyl(g, 3.5, 0.05, 2.5, null, 0.05, 0.05, 0.6, 12, '#d8e4e8', { roughness: 0.9 });
+  rb.rotation.z = 0.4;
+
+  // Wrenches (3)
+  const wrenches = [[3.2, 0.05, 1.2, 0.5], [-3.0, 0.05, 1.4, -0.8], [2.8, 0.05, -2.2, 1.2]];
+  for (const w of wrenches) {
+    const wg = new THREE.Group();
+    wg.position.set(w[0], w[1], w[2]); wg.rotation.y = w[3];
+    addBox(wg, 0, 0, 0, 0.35, 0.03, 0.05, '#7a7a8a', { metalness: 0.5, roughness: 0.4 });
+    addBox(wg, 0.18, 0.04, 0, 0.05, 0.1, 0.05, '#7a7a8a', { metalness: 0.5, roughness: 0.4 });
+    g.add(wg);
+  }
+
+  // Finished parts: bolt, static gear, L-bracket, 2 nuts
+  const fp = new THREE.Group();
+  fp.position.set(2.5, 0.03, 1.8);
+  addCyl(fp, 0, 0, 0, null, 0.06, 0.06, 0.2, 6, '#6a6a7a', { metalness: 0.5, roughness: 0.4 });
+  addCyl(fp, 0, 0.12, 0, null, 0.1, 0.1, 0.04, 6, '#6a6a7a', { metalness: 0.5, roughness: 0.4 });
+  g.add(fp);
+  const sg = addCyl(g, -2.5, 0.04, 2.2, null, 0.18, 0.18, 0.04, 12, '#8a7a5a', { metalness: 0.3, roughness: 0.6 });
+  sg.rotation.x = Math.PI / 2;
+  const lb = new THREE.Group();
+  lb.position.set(3.0, 0.03, -1.5);
+  addBox(lb, 0, 0, 0, 0.2, 0.02, 0.2, '#6a6a7a', { metalness: 0.5, roughness: 0.4 });
+  addBox(lb, 0.1, 0.1, 0, 0.02, 0.2, 0.2, '#6a6a7a', { metalness: 0.5, roughness: 0.4 });
+  g.add(lb);
+  addCyl(g, -2.0, 0.025, 1.0, null, 0.07, 0.07, 0.04, 6, '#6a6a7a', { metalness: 0.5, roughness: 0.4 });
+  addCyl(g, -1.7, 0.025, 1.2, null, 0.07, 0.07, 0.04, 6, '#6a6a7a', { metalness: 0.5, roughness: 0.4 });
+
+  // Three rotating gears
+  const rg = [[4.5, 1.2, 2.5, 1.0, 1.0], [5.5, 1.2, 3.0, 0.7, -1.4], [4.2, 1.2, 3.5, 0.6, 1.6]];
+  for (const r of rg) g.add(gear([r[0], r[1], r[2]], 0.4, 8, 0.08, accent, r[4], 0));
+
+  // Mechanical contraption
+  const mc = new THREE.Group();
+  mc.position.set(5.0, 0, 3.0);
+  addBox(mc, 0, 0.5, 0, 0.6, 1.0, 0.6, '#5a4a3a');
+  addCyl(mc, 0, 1.2, 0, null, 0.05, 0.05, 0.6, 8, '#7a7a8a', { metalness: 0.5, roughness: 0.4 });
+  mc.add(gear([0, 1.6, 0], 0.4, 8, 0.08, accent, 1.5, 0));
+  addCyl(mc, 0, 0.8, 0.31, null, 0.12, 0.12, 0.02, 16, '#d8c8a8');
+  g.add(mc);
+
+  // Background scatter — 10 trees
+  const trees = [[-12, 0, -6, 1.2], [-13, 0, 3, 1.0], [-9, 0, 10, 1.3], [10, 0, -9, 1.1], [13, 0, 2, 1.4], [9, 0, 9, 1.0], [-14, 0, -2, 1.2], [14, 0, 6, 1.1], [2, 0, -13, 1.3], [-4, 0, 13, 1.0]];
+  for (const t of trees) g.add(tree([t[0], t[1], t[2]], t[3]));
+  // 8 bushes
+  const bushes = [[-11, 0, -2], [-10, 0, 5], [11, 0, -3], [12, 0, 4], [-7, 0, 11], [6, 0, 11], [0, 0, -11], [-2, 0, 10]];
+  for (const b of bushes) g.add(bush(b));
+  // 6 rocks
+  const rocks = [[-8, 0, -3, 0.8, 0], [8, 0, 3, 1.0, 1], [-3, 0, -8, 0.6, 2], [4, 0, -8, 0.7, 3], [-6, 0, 6, 0.9, 4], [6, 0, -6, 0.5, 5]];
+  for (const r of rocks) g.add(rock([r[0], r[1], r[2]], r[3], '#7a7a7a', r[4]));
+
+  // Split-rail fence (8 posts + horizontal rails)
+  const fencePosts = Array.from({ length: 8 }, (_, i) => [-7 + i * 2, 0, -9]);
+  for (let i = 0; i < fencePosts.length; i++) {
+    const p = fencePosts[i];
+    g.add(pole(p, 0.8, 0.04, '#5a3a22'));
+    if (i < fencePosts.length - 1) {
+      const np = fencePosts[i + 1];
+      addBox(g, (p[0] + np[0]) / 2, 0.2, p[2], 2.0, 0.04, 0.04, '#7a5a3a');
+      addBox(g, (p[0] + np[0]) / 2, 0.55, p[2], 2.0, 0.04, 0.04, '#7a5a3a');
+    }
+  }
+
+  // Two lumber piles
+  const lp1 = new THREE.Group(); lp1.position.set(-6, 0, -8);
+  for (let row = 0; row < 3; row++) for (let col = 0; col < 3; col++) {
+    const m = addCyl(lp1, -0.2 + col * 0.18, 0.06 + row * 0.14, 0, null, 0.06, 0.06, 0.6, 6, '#7a5a3a');
+    m.rotation.z = Math.PI / 2;
+  }
+  g.add(lp1);
+  const lp2 = new THREE.Group(); lp2.position.set(6, 0, 8);
+  for (let row = 0; row < 2; row++) for (let col = 0; col < 4; col++) {
+    const m = addCyl(lp2, -0.3 + col * 0.18, 0.06 + row * 0.14, 0, null, 0.06, 0.06, 0.5, 6, '#7a5a3a');
+    m.rotation.z = Math.PI / 2;
+  }
+  g.add(lp2);
+
+  // Pond
+  const pond = new THREE.Mesh(new THREE.CircleGeometry(1.5, 24), new THREE.MeshStandardMaterial({ color: 0x3a6a8a, transparent: true, opacity: 0.8, roughness: 0.2, metalness: 0.3 }));
+  pond.position.set(-9, 0.01, 5); pond.rotation.x = -Math.PI / 2; pond.receiveShadow = true;
+  g.add(pond);
+
+  // Background wildflowers + grass
+  const wf = [[-5, 0, 7, '#ff6688'], [5, 0, -5, '#ffcc44'], [-3, 0, -6, '#a866ff'], [7, 0, 6, '#ff8866'], [-7, 0, 2, '#66aaff'], [3, 0, 8, '#ff6688'], [-9, 0, -5, '#ffcc44'], [9, 0, -2, '#a866ff'], [1, 0, 11, '#ff8866'], [-1, 0, -11, '#66aaff']];
+  for (const p of wf) g.add(flower([p[0], p[1], p[2]], p[3]));
+  for (let i = 0; i < 24; i++) {
+    const a = (i / 24) * Math.PI * 2 + 1;
+    const r = 8 + ((i * 7) % 6);
+    g.add(grassTuft([Math.cos(a) * r, 0, Math.sin(a) * r]));
+  }
+
+  // Clouds + bird
+  g.add(cloud([-6, 8, -4], 1.0, 0.2));
+  g.add(cloud([5, 9, 2], 1.2, 0.25));
+  g.add(cloud([0, 10, 8], 0.9, 0.18));
+  g.add(bird(5, 7, 0.5, 0, '#3a3a4a'));
+
+  return g;
+}
+
+// ----- Discovery: overlook with telescope + glowing nodes -----
+function buildDiscovery(accent) {
+  const g = new THREE.Group();
+  g.add(groundDisc('#3a5a4d', 5.5));
+  g.add(hill([0, 0, 0], 2.0, '#5a7a5a'));
+  // Overlook platform
+  const plat = addCyl(g, 0, 0.95, 0, null, 1.0, 1.2, 0.15, 16, '#8a7a5a');
+
+  // Stacked books
+  const bk = new THREE.Group(); bk.position.set(-1.4, 0, 0.4);
+  addBox(bk, 0, 0.08, 0, 0.6, 0.16, 0.4, '#8a3a3a');
+  addBox(bk, 0.05, 0.24, 0, 0.55, 0.16, 0.42, '#3a5a8a');
+  addBox(bk, -0.04, 0.4, 0.02, 0.58, 0.16, 0.38, '#3a8a5a');
+  g.add(bk);
+
+  g.add(telescope([1.3, 1.0, 0.3], 1.1, accent));
+
+  // 5 glowing nodes + lines
+  const nodes = [[1.5, 1.2, 0], [-1.5, 1.2, 0], [0, 1.8, 1.5], [0, 1.8, -1.5], [0, 2.5, 0]];
+  for (let i = 0; i < 4; i++) g.add(glowingNode(nodes[i], accent, 1));
+  g.add(glowingNode(nodes[4], accent, 1.3));
+  g.add(lineBetween(nodes[0], nodes[4], accent));
+  g.add(lineBetween(nodes[1], nodes[4], accent));
+  g.add(lineBetween(nodes[2], nodes[4], accent));
+  g.add(lineBetween(nodes[3], nodes[4], accent));
+  g.add(lineBetween(nodes[0], nodes[2], accent));
+  g.add(lineBetween(nodes[1], nodes[3], accent));
+
+  // Concentric rings
+  const rings = [2.5, 3.5, 4.5];
+  for (const r of rings) {
+    const ringMat = new THREE.MeshStandardMaterial({ color: new THREE.Color(accent), transparent: true, opacity: 0.35, side: THREE.DoubleSide });
+    const ring = new THREE.Mesh(new THREE.RingGeometry(r - 0.05, r, 48), ringMat);
+    ring.position.set(0, 0.02, 0); ring.rotation.x = -Math.PI / 2;
+    g.add(ring);
+  }
+
+  g.add(tree([-3.5, 0, -2.5], 1.0));
+  g.add(tree([3.5, 0, 2.5], 0.9));
+  g.add(bush([2.5, 0, -3.0]));
+  g.add(cloud([-4, 6, -3], 1.0, 0.2));
+  g.add(cloud([4, 7, 2], 1.2, 0.25));
+  g.add(bird(3.5, 6, 0.5, 0, '#3a4a5a'));
+  return g;
+}
+
+// ----- Challenge: fractured path + broken bridges + maze -----
+function buildChallenge(accent) {
+  const g = new THREE.Group();
+  g.add(groundDisc('#5a4a3a', 5.5));
+  g.add(hill([-3, 0, -2], 1.6, '#6a5a3a'));
+  g.add(hill([2.5, 0, -2.5], 1.3, '#6a5a3a'));
+  g.add(hill([0, 0, 3], 1.8, '#6a5a3a'));
+
+  // Fractured path segments
+  const pathSegs = [[-2.5, 0.05, 0.5, 0.2], [-1.0, 0.05, -0.5, -0.3], [0.5, 0.05, 0.8, 0.4], [2.0, 0.05, -0.3, -0.1], [3.0, 0.05, 1.2, 0.6]];
+  for (const p of pathSegs) {
+    const m = addBox(g, p[0], p[1], p[2], 0.8, 0.1, 0.4, '#8a7a5a');
+    m.rotation.y = p[3];
+  }
+
+  // Two broken bridges
+  const b1 = new THREE.Group(); b1.position.set(-2.0, 0, 1.5); b1.rotation.y = 0.3;
+  const b1a = addBox(b1, -0.5, 0.2, 0, 0.6, 0.1, 0.5, '#7a5a3a'); b1a.rotation.x = 0.2;
+  const b1b = addBox(b1, 0.5, 0.2, 0, 0.6, 0.1, 0.5, '#7a5a3a'); b1b.rotation.set(-0.2, 0, 0.2);
+  g.add(b1);
+  const b2 = new THREE.Group(); b2.position.set(2.0, 0, -1.0); b2.rotation.y = -0.4;
+  const b2a = addBox(b2, -0.4, 0.2, 0, 0.5, 0.1, 0.4, '#7a5a3a'); b2a.rotation.z = 0.1;
+  const b2b = addBox(b2, 0.5, 0.2, 0.1, 0.5, 0.1, 0.4, '#7a5a3a'); b2b.rotation.set(0.2, 0.2, 0);
+  g.add(b2);
+
+  // Small maze
+  const mazeWalls = [[-1.0, 0.25, -2.5, 0.8, 0.5, 0.1], [-0.2, 0.25, -2.0, 0.1, 0.5, 0.8], [0.5, 0.25, -2.7, 0.8, 0.5, 0.1], [1.2, 0.25, -2.2, 0.1, 0.5, 0.8], [0.0, 0.25, -1.5, 0.6, 0.5, 0.1]];
+  for (const w of mazeWalls) addBox(g, w[0], w[1], w[2], w[3], w[4], w[5], '#8a7a5a');
+
+  g.add(signpost([3.5, 0, 1.5], accent));
+  g.add(lantern([-3.5, 0, 1.0], accent));
+  g.add(rock([1.5, 0, 2.5], 0.7, '#7a7a7a', 0));
+  g.add(rock([-2.0, 0, 2.5], 0.9, '#7a7a7a', 1.0));
+  g.add(bush([3.0, 0, 3.0]));
+  g.add(tree([-4.0, 0, -1.0], 0.9));
+  g.add(cloud([0, 6, -2], 1.0, 0.2));
+  g.add(bird(3, 5, 0.5, 0, '#5a4a3a'));
+  return g;
+}
+
+// ----- Growth: village + scaffolding + crane + bridges -----
+function buildGrowth(accent) {
+  const g = new THREE.Group();
+  g.add(groundDisc('#4a5a3d', 5.5));
+  g.add(hill([-3.5, 0, -3], 1.5, '#5a7a4a'));
+
+  g.add(building([-2.0, 0, 1.5], 0.8, 1.0, 0.8, '#c8b896', '#7a3a2a'));
+  g.add(building([-0.5, 0, -2.0], 0.8, 1.0, 0.8, '#b8a886', '#8a4a3a'));
+  // Tallest with scaffolding — use scale via group
+  const tall = new THREE.Group(); tall.position.set(1.5, 0, -1.0); tall.scale.setScalar(1.4);
+  const tallBody = addBox(tall, 0, 0.5, 0, 0.8, 1.0, 0.8, '#a89878');
+  const tallRoof = new THREE.Mesh(new THREE.ConeGeometry(0.65, 0.5, 4), clayMat('#6a3a2a'));
+  tallRoof.position.set(0, 1.25, 0); tallRoof.rotation.y = Math.PI / 4; tallRoof.castShadow = true;
+  tall.add(tallRoof);
+  g.add(tall);
+  g.add(building([3.0, 0, 1.5], 0.8 * 0.85, 1.0 * 0.85, 0.8 * 0.85, '#c8b896', '#7a3a2a'));
+
+  // Scaffolding around tallest building (in world space — compute positions)
+  const cx = 1.5, cz = -1.0, w = 0.6 * 1.4;
+  const scaff = [
+    [cx - w, 1.0, cz - w, 0.04, 2.0, 0.04],
+    [cx + w, 1.0, cz - w, 0.04, 2.0, 0.04],
+    [cx - w, 1.0, cz + w, 0.04, 2.0, 0.04],
+    [cx + w, 1.0, cz + w, 0.04, 2.0, 0.04],
+    [cx, 0.4, cz - w, w * 2 + 0.1, 0.04, 0.04],
+    [cx, 0.4, cz + w, w * 2 + 0.1, 0.04, 0.04],
+    [cx, 1.6, cz - w, w * 2 + 0.1, 0.04, 0.04],
+    [cx, 1.6, cz + w, w * 2 + 0.1, 0.04, 0.04],
+  ];
+  for (const s of scaff) addBox(g, s[0], s[1], s[2], s[3], s[4], s[5], '#8a7a5a', { metalness: 0.3, roughness: 0.5 });
+
+  g.add(crane([2.5, 0, -2.5], accent));
+
+  // Two bridges
+  const br1 = bridge([-1.5, 0.05, 2.5], 2, '#7a5a3a'); br1.rotation.y = 0.3; g.add(br1);
+  const br2 = bridge([2.0, 0.05, 0.0], 2, '#7a5a3a'); br2.rotation.y = Math.PI / 2; g.add(br2);
+
+  // Ground path
+  const pathSegs = [[-3.5, 0.05, 1.5, 0.3], [-2.0, 0.05, 0.5, 0.2], [-0.5, 0.05, -0.5, 0.0], [1.0, 0.05, 0.5, -0.2], [2.5, 0.05, 1.5, -0.3], [3.5, 0.05, 0.0, -0.5]];
+  for (const p of pathSegs) {
+    const m = addBox(g, p[0], p[1], p[2], 0.7, 0.04, 0.4, '#8a7a5a', { receive: true });
+    m.rotation.y = p[3];
+  }
+
+  g.add(tree([-4.0, 0, 0], 0.9));
+  g.add(tree([4.2, 0, -1.0], 0.85));
+  g.add(bush([-3.0, 0, 2.5]));
+  g.add(cloud([-3, 6, -2], 1.0, 0.2));
+  g.add(cloud([3, 7, 1], 1.1, 0.25));
+  g.add(bird(3.5, 6, 0.5, 0, '#4a4a5a'));
+  return g;
+}
+
+// ----- Apex: summit + observation platform + distant mountains -----
+function buildApex(accent) {
+  const g = new THREE.Group();
+  g.add(groundDisc('#5a6a4a', 8.0));
+  g.add(hill([0, 0, 0], 3.0, '#6a7a5a'));
+
+  // Observation platform + railings
+  const plat = addCyl(g, 0, 1.4, 0, null, 1.4, 1.6, 0.2, 16, '#8a7a5a');
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * Math.PI * 2;
+    addCyl(g, Math.cos(a) * 1.4, 1.7, Math.sin(a) * 1.4, null, 0.03, 0.03, 0.5, 6, '#5a3a22');
+  }
+
+  // Bench
+  const bench = new THREE.Group(); bench.position.set(0.5, 1.55, 0.3);
+  addBox(bench, 0, 0.15, 0, 0.5, 0.05, 0.2, '#7a5a3a');
+  addBox(bench, -0.2, 0.07, 0, 0.04, 0.15, 0.2, '#5a3a22');
+  addBox(bench, 0.2, 0.07, 0, 0.04, 0.15, 0.2, '#5a3a22');
+  g.add(bench);
+
+  // 4 distant mountain cones
+  const mountains = [[-9, 0, -8, 3.5], [9, 0, -7, 4.0], [-8, 0, 9, 3.8], [10, 0, 8, 3.2]];
+  for (const m of mountains) {
+    const mesh = new THREE.Mesh(new THREE.ConeGeometry(1, 1.5, 8), clayMat('#7a8a7a', { flatShading: true }));
+    mesh.position.set(m[0], 0, m[2]); mesh.scale.set(m[3], m[3] * 1.2, m[3]);
+    mesh.castShadow = true; mesh.receiveShadow = true;
+    g.add(mesh);
+  }
+
+  g.add(tree([2.5, 0, 1.0], 0.9));
+  g.add(flag([-1.0, 1.5, -0.5], 2, accent, 0));
+  g.add(lantern([1.0, 1.5, 0.8], accent));
+  g.add(bush([-2.5, 0, -1.0]));
+  g.add(rock([2.0, 0, -1.5], 0.6, '#7a7a7a', 0));
+  g.add(cloud([-4, 7, -3], 1.2, 0.2));
+  g.add(cloud([4, 8, 2], 1.0, 0.25));
+  g.add(cloud([0, 9, -5], 1.1, 0.18));
+  g.add(bird(4, 7, 0.5, 0, '#4a4a5a'));
+  g.add(bird(3.5, 6, 0.6, 1.5, '#3a3a4a'));
+  return g;
+}
+
+// ----- Transition: misty fork + 3 trails + signposts -----
+function buildTransition(accent) {
+  const g = new THREE.Group();
+  g.add(groundDisc('#4a4a5a', 5.5));
+  g.add(hill([-3.0, 0, -2.5], 1.4, '#5a5a6a'));
+  g.add(hill([3.0, 0, -2.5], 1.2, '#5a5a6a'));
+  g.add(hill([0, 0, 3.5], 1.6, '#5a5a6a'));
+
+  // Central clearing
+  const clear = new THREE.Mesh(new THREE.CircleGeometry(1.2, 24), new THREE.MeshStandardMaterial({ color: 0x6a6a7a, roughness: 0.95 }));
+  clear.position.set(0, 0.03, 0); clear.rotation.x = -Math.PI / 2; clear.receiveShadow = true;
+  g.add(clear);
+
+  // 3 trail rings
+  const rings = [1.5, 2.5, 3.5];
+  for (const r of rings) {
+    const ring = new THREE.Mesh(new THREE.RingGeometry(r - 0.05, r, 48), new THREE.MeshStandardMaterial({ color: new THREE.Color(accent), transparent: true, opacity: 0.4, side: THREE.DoubleSide }));
+    ring.position.set(0, 0.02, 0); ring.rotation.x = -Math.PI / 2;
+    g.add(ring);
+  }
+
+  g.add(signpost([2.0, 0, 1.5], accent));
+  g.add(signpost([-2.0, 0, 1.5], accent));
+
+  // 4 mist patches
+  const mists = [[2.5, 0.3, 1.0, 1.0], [-2.5, 0.3, 1.0, 1.2], [1.5, 0.3, -2.5, 0.9], [-1.5, 0.3, -2.5, 1.1]];
+  for (const m of mists) g.add(mist([m[0], m[1], m[2]], m[3], '#d8d8e0'));
+
+  g.add(tree([-3.5, 0, 1.0], 0.9));
+  g.add(tree([3.5, 0, 1.0], 0.9));
+  g.add(tree([0, 0, -3.5], 1.0));
+  g.add(bush([1.5, 0, -1.0]));
+  g.add(lantern([0, 0, 0], accent));
+  g.add(cloud([-3, 6, -2], 1.0, 0.2));
+  g.add(cloud([3, 7, 1], 1.1, 0.25));
+  return g;
+}
+
+// ----- Reinvention: garden ring + glowing tree + convergence -----
+function buildReinvention(accent) {
+  const g = new THREE.Group();
+  g.add(groundDisc('#3d5a4a', 5.5));
+  g.add(hill([-3.0, 0, -2.5], 1.4, '#5a7a5a'));
+  g.add(hill([3.0, 0, -2.5], 1.2, '#5a7a5a'));
+
+  // Garden ring
+  const ring = new THREE.Mesh(new THREE.RingGeometry(1.4, 1.6, 48), new THREE.MeshStandardMaterial({ color: new THREE.Color(accent), transparent: true, opacity: 0.5, side: THREE.DoubleSide }));
+  ring.position.set(0, 0.03, 0); ring.rotation.x = -Math.PI / 2; ring.receiveShadow = true;
+  g.add(ring);
+
+  // Glowing tree at center
+  g.add(glowingTree([0, 0, 0], 1.2, accent));
+
+  // Mini workshop
+  const ws = new THREE.Group(); ws.position.set([2.2, 0, 1.0][0], 0, 1.0);
+  addBox(ws, 0, 0.2, 0, 0.4, 0.4, 0.4, '#a89070');
+  const wsRoof = new THREE.Mesh(new THREE.ConeGeometry(0.3, 0.2, 4), clayMat('#7a3a2a'));
+  wsRoof.position.set(0, 0.5, 0); wsRoof.rotation.y = Math.PI / 4; wsRoof.castShadow = true;
+  ws.add(wsRoof);
+  g.add(ws);
+
+  g.add(gear([-2.2, 0.4, 1.0], 0.4, 8, 0.08, accent, 0.8, 0));
+  const book = addBox(g, 2.2, 0.05, -1.0, 0.5, 0.1, 0.35, '#3a5a8a'); book.rotation.y = 0.4;
+  const br = bridge([-2.2, 0, -1.0], 2, accent); br.scale.setScalar(0.4); g.add(br);
+  const bldg = building([0, 0, 2.2], 0.8 * 0.5, 1.0 * 0.5, 0.8 * 0.5, accent, '#7a3a2a'); bldg.scale.setScalar(0.5); g.add(bldg);
+  const mtn = new THREE.Mesh(new THREE.ConeGeometry(0.35, 0.6, 6), clayMat('#7a8a7a', { flatShading: true }));
+  mtn.position.set(0, 0, -2.2); mtn.castShadow = true; g.add(mtn);
+  const sp = signpost([1.2, 0, -1.5], accent); sp.scale.setScalar(0.7); g.add(sp);
+
+  g.add(tree([-3.5, 0, 1.0], 0.9));
+  g.add(tree([3.5, 0, 1.0], 0.9));
+  g.add(bush([-2.0, 0, 2.5]));
+  g.add(bush([2.0, 0, 2.5]));
+  const flowers = [[1.5, 0, 1.5, '#ff6688'], [-1.5, 0, 1.5, '#ffcc44'], [1.5, 0, -1.5, '#a866ff'], [-1.5, 0, -1.5, '#66aaff']];
+  for (const f of flowers) g.add(flower([f[0], f[1], f[2]], f[3]));
+  g.add(cloud([-3, 6, -2], 1.0, 0.2));
+  g.add(cloud([3, 7, 2], 1.1, 0.25));
+  g.add(bird(4, 6, 0.5, 0, '#5a4a6a'));
+  return g;
+}
+
+// ----- Present: winding trail + tent + campfire + observatory -----
+function buildPresent(accent) {
+  const g = new THREE.Group();
+  g.add(groundDisc('#2a3a4a', 5.5));
+  g.add(hill([-3.0, 0, -2.5], 1.4, '#3a4a5a'));
+  g.add(hill([3.0, 0, -2.5], 1.2, '#3a4a5a'));
+
+  // Winding trail (6 ring segments)
+  const trailRings = [[0, 0.02, 0, 1.0, 0], [0.6, 0.02, 0.6, 0.9, 0.5], [1.2, 0.02, 0.2, 0.85, 1.0], [1.5, 0.02, -0.6, 0.8, 1.5], [1.0, 0.02, -1.4, 0.85, 2.0], [0.2, 0.02, -1.8, 0.9, 2.5]];
+  for (const r of trailRings) {
+    const ring = new THREE.Mesh(new THREE.RingGeometry(r[3] - 0.06, r[3], 24), new THREE.MeshStandardMaterial({ color: new THREE.Color(accent), transparent: true, opacity: 0.45, side: THREE.DoubleSide }));
+    ring.position.set(r[0], r[1], r[2]); ring.rotation.set(-Math.PI / 2, 0, r[4]);
+    g.add(ring);
+  }
+
+  const t = tent([-1.5, 0, 0], 1.2, accent); t.scale.setScalar(1.2); g.add(t);
+  g.add(campfire([0, 0, 0]));
+  const fireLight = new THREE.PointLight(0xff7a1a, 1.5, 5);
+  fireLight.position.set(0, 0.6, 0);
+  g.add(fireLight);
+
+  // Observatory dome
+  const obs = new THREE.Group(); obs.position.set(2.0, 0, -1.0);
+  addCyl(obs, 0, 0.3, 0, null, 0.7, 0.7, 0.6, 16, '#5a5a6a');
+  const dome = new THREE.Mesh(new THREE.SphereGeometry(0.7, 16, 12, 0, Math.PI * 2, 0, Math.PI / 2), clayMat('#7a7a8a', { metalness: 0.4, roughness: 0.4 }));
+  dome.position.set(0, 0.7, 0); dome.castShadow = true;
+  obs.add(dome);
+  const slot = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.5, 0.7), new THREE.MeshStandardMaterial({ color: new THREE.Color(accent), emissive: new THREE.Color(accent), emissiveIntensity: 0.3 }));
+  slot.position.set(0, 0.9, 0); slot.castShadow = true;
+  obs.add(slot);
+  g.add(obs);
+
+  g.add(tree([-3.5, 0, 1.0], 0.9));
+  g.add(tree([3.5, 0, 1.0], 0.9));
+  g.add(bush([1.0, 0, 1.5]));
+  g.add(rock([-2.5, 0, -1.0], 0.6, '#7a7a7a', 0));
+  g.add(lantern([-1.0, 0, 1.5], accent));
+  g.add(flag([2.0, 0, 1.5], 2, accent, 0.5));
+  g.add(cloud([-3, 6, -2], 1.0, 0.2, '#8a8a9a'));
+  g.add(cloud([3, 7, 1], 1.1, 0.25, '#8a8a9a'));
+  g.add(bird(4, 6, 0.5, 0, '#3a3a5a'));
+  return g;
+}
+
+// ============================================================================
+// MAIN ANIMATION LOOP
+// ============================================================================
+const mainTimer = new THREE.Timer();
+
+function animateMain() {
+  requestAnimationFrame(animateMain);
+  mainTimer.update();
+  const dt = Math.min(0.05, mainTimer.getDelta());
+  const t = mainTimer.getElapsedTime();
+  // Animate flag flutter + beacon pulse
+  flagGroups.forEach((g, i) => {
+    if (g.userData.flag) g.userData.flag.rotation.z = Math.sin(t * 3 + i) * 0.15;
+    if (g.userData.light) {
+      const isActive = i === activeCheckpoint;
+      g.userData.light.intensity = (isActive ? 0.9 : 0.5) + 0.2 * Math.sin(t * 1.8 + i * 1.3);
+    }
+  });
+  if (isFlying && flyStart && flyEnd) {
+    flyProgress = Math.min(1, flyProgress + dt * 1.2);
+    const ft = flyProgress;
+    const eased = ft < 0.5 ? 4 * ft * ft * ft : 1 - Math.pow(-2 * ft + 2, 3) / 2;
+    camera.position.lerpVectors(flyStart.pos, flyEnd.pos, eased);
+    const target = flyStart.target.clone().lerp(flyEnd.target, eased);
+    camera.lookAt(target);
+    if (flyProgress >= 1) {
+      setOrbitFromCamera(camera.position, flyEnd.target);
+      ORBIT_TARGET.copy(flyEnd.target);
+      flyStart = null; flyEnd = null;
+      completeFlight();
+    }
+  } else {
+    if (autoRotateEnabled && !isSceneOpen) {
+      orbitTheta += dt * 0.04;
+    }
+    applyOrbit();
+  }
+  renderer.render(scene, camera);
+}
+
+// Resize handler
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  // Update Line2 resolution so linewidth stays correct after resize
+  scene.traverse(obj => { if (obj.isLine2 && obj.material && obj.material.resolution) obj.material.resolution.set(window.innerWidth, window.innerHeight); });
+  if (isSceneOpen) resizeSculpture();
+});
+
+// Start loops
+animateMain();
+animateSculpture();
+</script>
+</body>
+</html>
